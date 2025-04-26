@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -34,7 +35,7 @@ const popularPosts = [
 export default function Sidebar() {
   return (
     <ShadSidebar side="left" variant="sidebar" collapsible="offcanvas"> {/* Changed from 'icon' to 'offcanvas' */}
-      <SidebarContent className="p-0">
+      <SidebarContent className="p-0 pt-4"> {/* Added pt-4 */}
          <SidebarMenu className="p-2">
             <SidebarMenuItem>
               <SidebarMenuButton href="/" tooltip="Home">
