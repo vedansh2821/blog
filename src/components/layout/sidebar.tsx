@@ -33,7 +33,7 @@ const popularPosts = [
 
 export default function Sidebar() {
   return (
-    <ShadSidebar side="left" variant="sidebar" collapsible="icon">
+    <ShadSidebar side="left" variant="sidebar" collapsible="offcanvas"> {/* Changed from 'icon' to 'offcanvas' */}
       <SidebarContent className="p-0">
          <SidebarMenu className="p-2">
             <SidebarMenuItem>
