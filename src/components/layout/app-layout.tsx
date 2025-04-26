@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Header from './header';
 import Sidebar from './sidebar';
 import Footer from './footer';
 import BackToTopButton from '@/components/ui/back-to-top-button';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import Chatbot from '@/components/chatbot'; // Import the Chatbot component
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
 
@@ -20,6 +21,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <Footer />
+        <Chatbot /> {/* Add the Chatbot component here */}
         <BackToTopButton />
       </div>
     </SidebarProvider>
