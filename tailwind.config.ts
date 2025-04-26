@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -10,8 +11,10 @@ export default {
   theme: {
   	extend: {
         fontFamily: {
-            sans: ['var(--font-geist-sans)', 'sans-serif'],
-            mono: ['var(--font-geist-mono)', 'monospace'],
+            // Use the CSS variable defined in layout.tsx
+            sans: ['var(--font-inter)', 'sans-serif'],
+            // Keep mono if needed, or remove if Inter is the only font
+            // mono: ['var(--font-geist-mono)', 'monospace'],
         },
   		colors: {
   			background: 'hsl(var(--background))',

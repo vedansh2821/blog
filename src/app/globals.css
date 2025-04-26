@@ -1,9 +1,10 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 body {
-  font-family: var(--font-geist-sans), sans-serif;
+  font-family: var(--font-inter), sans-serif; /* Use Inter font variable */
 }
 
 @layer base {
@@ -33,6 +34,8 @@ body {
     --chart-4: 30 74% 66%;
     --chart-5: 330 87% 67%;
     --radius: 0.5rem;
+
+    /* Sidebar Specific Variables (Light) */
     --sidebar-background: 210 40% 98%;
     --sidebar-foreground: 222.2 84% 4.9%;
     --sidebar-primary: 163 100% 70%;
@@ -41,6 +44,10 @@ body {
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
     --sidebar-border: 214.3 31.8% 91.4%;
     --sidebar-ring: 163 100% 70%;
+
+    /* Sidebar Width Variables */
+    --sidebar-width: 16rem; /* Expanded width */
+    --sidebar-width-icon: 3.5rem; /* Collapsed (icon-only) width */
   }
 
   .dark {
@@ -68,6 +75,8 @@ body {
     --chart-3: 240 80% 55%;
     --chart-4: 30 65% 60%;
     --chart-5: 330 75% 55%;
+
+    /* Sidebar Specific Variables (Dark) */
     --sidebar-background: 0 0% 7%;
     --sidebar-foreground: 0 0% 93%;
     --sidebar-primary: 163 100% 70%;
@@ -76,6 +85,10 @@ body {
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 15%;
     --sidebar-ring: 163 100% 70%;
+
+     /* Sidebar Width Variables (can be the same as light, but defined for potential overrides) */
+     --sidebar-width: 16rem;
+     --sidebar-width-icon: 3.5rem;
   }
 }
 
@@ -91,6 +104,19 @@ body {
   }
   main {
       flex-grow: 1;
+      /* Add padding-left based on sidebar state - handled by AppLayout/Sidebar components */
+       /* transition: padding-left 0.3s ease-in-out; */
+       /* Default padding for expanded sidebar */
+       /* padding-left: var(--sidebar-width); */
+       /* Adjust padding when sidebar is collapsed */
+       /* body[data-sidebar-state="collapsed"] & {
+          padding-left: var(--sidebar-width-icon);
+       } */
+       /* Remove padding on mobile */
+       /* @media (max-width: 767px) {
+         padding-left: 0;
+       } */
+
   }
   h1, h2, h3, h4, h5, h6 {
       @apply font-semibold tracking-tight;
@@ -114,3 +140,9 @@ body {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
 }
+
+/* Smooth transition for main content padding when sidebar state changes */
+ /* main {
+   transition: padding-left 0.3s ease-in-out;
+ } */
+
