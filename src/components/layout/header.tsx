@@ -10,7 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import {
   SidebarTrigger
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
 
 
 const navItems = [
@@ -88,15 +88,19 @@ export default function Header() {
             variant="ghost"
             size="icon"
             onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            aria-label={
+              mounted
+                ? `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`
+                : 'Toggle theme' // Default aria-label during SSR/initial render
+            }
             className="h-9 w-9 rounded-full"
           >
              {/* Render icon only after mount to prevent hydration mismatch */}
              {mounted ? (
                theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />
              ) : (
-                // Render a placeholder or nothing during server render/initial client render
-                <Moon className="h-5 w-5" /> // Default to one icon initially
+                // Render a placeholder or consistent icon during server render/initial client render
+                <Moon className="h-5 w-5 text-transparent" /> // Render one icon but make it invisible initially
              )}
           </Button>
 
