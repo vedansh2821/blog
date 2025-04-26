@@ -1,3 +1,4 @@
+// src/components/layout/header.tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -24,6 +25,12 @@ export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure the component is mounted before rendering theme-dependent UI
+  useEffect(() => {
+      setMounted(true);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -83,7 +90,8 @@ export default function Header() {
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             className="h-9 w-9 rounded-full"
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {mounted && (theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />)}
+            {!mounted && <Moon className="h-5 w-5 opacity-0"/>} {/* Render placeholder initially */}
           </Button>
 
           {/* Mobile Menu Button */}
