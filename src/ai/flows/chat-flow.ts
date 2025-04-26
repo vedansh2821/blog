@@ -3,35 +3,40 @@
  * @fileOverview Simple chatbot flow for Midnight Muse.
  *
  * - chatFlow - Handles conversation based on history and new message.
- * - ChatFlowInputSchema - Input schema for the chat flow.
- * - ChatFlowOutputSchema - Output schema for the chat flow.
+ * - ChatFlowInput - Input type for the chat flow.
+ * - ChatFlowOutput - Output type for the chat flow.
  */
 import {ai} from '@/ai/ai-instance';
 import {z} from 'genkit';
 
-// Define the structure for a single message in the history
+// Define the structure for a single message in the history (internal use)
 const ChatMessageSchema = z.object({
   role: z.enum(['user', 'bot']).describe('The role of the message sender (user or bot).'),
   content: z.string().describe('The text content of the message.'),
 });
 
-export const ChatFlowInputSchema = z.object({
+// Define the input schema (internal use)
+const ChatFlowInputSchema = z.object({
   history: z.array(ChatMessageSchema).describe('The previous conversation history.'),
   message: z.string().describe('The latest message from the user.'),
 });
-export type ChatFlowInput = z.infer<typeof ChatFlowInputSchema>;
 
-export const ChatFlowOutputSchema = z.object({
+// Define the output schema (internal use)
+const ChatFlowOutputSchema = z.object({
   reply: z.string().describe('The chatbot\'s response to the user\'s message.'),
 });
+
+// Export ONLY the types needed by client components
+export type ChatFlowInput = z.infer<typeof ChatFlowInputSchema>;
 export type ChatFlowOutput = z.infer<typeof ChatFlowOutputSchema>;
 
 
+// Define the prompt (internal use)
 const chatPrompt = ai.definePrompt({
   name: 'chatPrompt',
   input: { schema: ChatFlowInputSchema },
   output: { schema: ChatFlowOutputSchema },
-  prompt: `You are a helpful assistant for the "Midnight Muse" blog. Your personality is knowledgeable, slightly witty, and encouraging of curiosity.
+  prompt: `You are a helpful assistant for the "Midnight Muse" blog. Your personality is knowledgeable, slightly witty, and encouraging of curiosity. Keep your responses concise and friendly.
 
   Here is the conversation history:
   {{#each history}}
@@ -44,7 +49,7 @@ const chatPrompt = ai.definePrompt({
 });
 
 
-// Define the Genkit Flow
+// Define the Genkit Flow (internal use)
 const internalChatFlow = ai.defineFlow(
   {
     name: 'chatFlow',
@@ -65,7 +70,7 @@ const internalChatFlow = ai.defineFlow(
   }
 );
 
-// Exported async wrapper function for the flow
+// Export ONLY the async wrapper function for the flow
 export async function chatFlow(input: ChatFlowInput): Promise<ChatFlowOutput> {
     return internalChatFlow(input);
 }
