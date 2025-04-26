@@ -44,7 +44,8 @@ export default function Header() {
     >
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-4">
-         <div className="md:hidden">
+         {/* Sidebar Trigger - Now visible on all screen sizes */}
+         <div>
            <SidebarTrigger />
          </div>
           <Link href="/" className="flex items-center gap-2 text-xl font-bold text-primary hover:opacity-80 transition-opacity" aria-label="Midnight Muse Home">
@@ -86,7 +87,7 @@ export default function Header() {
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
 
-          {/* Mobile Menu Button */}
+          {/* Mobile Menu Button for Sheet */}
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
              <SheetTrigger asChild className="md:hidden">
                 <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Open navigation menu">
