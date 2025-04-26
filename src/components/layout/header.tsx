@@ -24,6 +24,13 @@ export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false); // State to track client-side mount
+
+  // Set mounted to true only on the client side
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -84,7 +91,13 @@ export default function Header() {
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             className="h-9 w-9 rounded-full"
           >
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+             {/* Render icon only after mount to prevent hydration mismatch */}
+             {mounted ? (
+               theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />
+             ) : (
+                // Render a placeholder or nothing during server render/initial client render
+                <Moon className="h-5 w-5" /> // Default to one icon initially
+             )}
           </Button>
 
           {/* Mobile Menu Button for Sheet */}
