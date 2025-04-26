@@ -4,16 +4,18 @@
  * @fileOverview Provides a chatbot flow for the Midnight Muse blog.
  *
  * - chatWithBot - Handles a chat interaction.
- * - ChatInput - Input schema for the chat flow.
- * - ChatOutput - Output schema for the chat flow.
+ * - ChatInput - Input type for the chat flow.
+ * - ChatOutput - Output type for the chat flow.
  * - ChatMessage - Represents a single message in the chat history.
  */
 
 import { ai } from '@/ai/ai-instance';
 import { z } from 'genkit';
+// import { generate, CoreMessageData } from 'genkit/model'; // Uncomment if using direct generate example
+
 
 // Define the structure for a single chat message (used for history)
-export const ChatMessageSchema = z.object({
+const ChatMessageSchema = z.object({
     role: z.enum(['user', 'model']), // 'user' for user messages, 'model' for AI responses
     content: z.string(),
 });
@@ -21,7 +23,7 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 
 // Define the input schema for the chat flow
-export const ChatInputSchema = z.object({
+const ChatInputSchema = z.object({
   message: z.string().describe('The latest message from the user.'),
   // Optionally include history if needed for more context
    history: z.array(ChatMessageSchema).optional().describe('The recent chat history (optional).'),
@@ -30,7 +32,7 @@ export type ChatInput = z.infer<typeof ChatInputSchema>;
 
 
 // Define the output schema for the chat flow
-export const ChatOutputSchema = z.object({
+const ChatOutputSchema = z.object({
   response: z.string().describe('The AI chatbot\'s response to the user message.'),
 });
 export type ChatOutput = z.infer<typeof ChatOutputSchema>;
@@ -118,7 +120,7 @@ const chatbotFlow = ai.defineFlow<typeof ChatInputSchema, typeof ChatOutputSchem
 
     const response = await generate({
       model: googleAI('gemini-1.5-flash'), // or your preferred model
-      prompt: `You are a friendly and helpful AI assistant for the "Midnight Muse" blog. Answer questions about blog content, topics, authors, or navigation. Be concise. If unsure, say so politely. \n\nUser: ${input.message}\nAI:`,
+      prompt: \`You are a friendly and helpful AI assistant for the "Midnight Muse" blog. Answer questions about blog content, topics, authors, or navigation. Be concise. If unsure, say so politely. \\n\\nUser: \${input.message}\\nAI:\`,
       history: historyMessages,
       output: { schema: ChatOutputSchema }
     });
