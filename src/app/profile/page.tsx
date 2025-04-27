@@ -12,12 +12,13 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Edit, Save, Lock, Loader2, Mail, Phone, User as UserIcon } from 'lucide-react';
+import { Calendar as CalendarIcon, Edit, Save, Lock, Loader2, Mail, Phone, User as UserIcon, Users } from 'lucide-react'; // Added Users icon
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import BlogPostCard from '@/components/blog-post-card'; // Reuse for displaying posts
 import type { Post } from '@/types/blog'; // Import Post type
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Import Table components
 
 // Mock API call - replace with actual fetch
 const fetchUserPosts = async (userId: string): Promise<Post[]> => {
@@ -41,6 +42,26 @@ const fetchUserPosts = async (userId: string): Promise<Post[]> => {
         return [];
     }
 };
+
+// Function to fetch all users (for admin)
+const fetchAllUsers = async (): Promise<AuthUser[]> => {
+    console.log('[Profile] Fetching all users for admin.');
+    try {
+        const response = await fetch('/api/users'); // Assuming an API endpoint exists
+        if (!response.ok) {
+            throw new Error('Failed to fetch users');
+        }
+        const usersData: AuthUser[] = await response.json();
+        // Ensure dates are formatted correctly if necessary (mock DB already handles it)
+         return usersData.map(user => ({
+             ...user,
+             joinedAt: user.joinedAt ? new Date(user.joinedAt) : undefined, // Convert if needed
+         }));
+    } catch (error) {
+        console.error('[Profile] Error fetching all users:', error);
+        return [];
+    }
+}
 
 
 export default function ProfilePage() {
@@ -67,6 +88,10 @@ export default function ProfilePage() {
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
 
+  // State for admin user management
+  const [allUsers, setAllUsers] = useState<AuthUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
   // Redirect if not logged in
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -74,7 +99,7 @@ export default function ProfilePage() {
     }
   }, [authLoading, currentUser, router]);
 
-  // Fetch user posts when currentUser is available
+  // Fetch user posts and potentially all users (if admin) when currentUser is available
   useEffect(() => {
       if (currentUser?.id) {
           setLoadingPosts(true);
@@ -82,8 +107,17 @@ export default function ProfilePage() {
               .then(setUserPosts)
               .catch(err => toast({ title: "Error loading posts", description: "Could not fetch your posts.", variant: "destructive" }))
               .finally(() => setLoadingPosts(false));
+
+           // If user is admin, fetch all users
+           if (currentUser.role === 'admin') {
+                setLoadingUsers(true);
+                fetchAllUsers()
+                     .then(setAllUsers)
+                     .catch(err => toast({ title: "Error Loading Users", description: "Could not fetch user list.", variant: "destructive"}))
+                     .finally(() => setLoadingUsers(false));
+           }
       }
-  }, [currentUser?.id, toast]);
+  }, [currentUser?.id, currentUser?.role, toast]);
 
 
   // Update local state when currentUser changes (e.g., after login/update)
@@ -340,6 +374,65 @@ export default function ProfilePage() {
           <Button variant="destructive" onClick={logout}>Log Out</Button>
         </CardFooter>
       </Card>
+
+      {/* Admin User Management Section */}
+        {currentUser.role === 'admin' && (
+            <Card className="max-w-4xl mx-auto mb-12 shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Users className="h-5 w-5"/> User Management</CardTitle>
+                    <CardDescription>View and manage user accounts.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {loadingUsers ? (
+                        <div className="space-y-4">
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                        </div>
+                    ) : allUsers.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Avatar</TableHead>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>Role</TableHead>
+                                    <TableHead>Phone</TableHead>
+                                    <TableHead>DOB</TableHead>
+                                    <TableHead>Joined</TableHead>
+                                    {/* Add Actions column if needed */}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {allUsers.map((user) => (
+                                    <TableRow key={user.id}>
+                                        <TableCell>
+                                            <Avatar className="h-8 w-8">
+                                                <AvatarImage src={user.photoURL || undefined} alt={user.name || 'User'} />
+                                                <AvatarFallback>{user.name?.[0] || user.email?.[0] || 'U'}</AvatarFallback>
+                                            </Avatar>
+                                        </TableCell>
+                                        <TableCell className="font-medium">{user.name || 'N/A'}</TableCell>
+                                        <TableCell>{user.email}</TableCell>
+                                        <TableCell>{user.role}</TableCell>
+                                        <TableCell>{user.phone || 'N/A'}</TableCell>
+                                        <TableCell>{user.dob ? format(new Date(user.dob), 'yyyy-MM-dd') : 'N/A'}</TableCell>
+                                        <TableCell>{user.joinedAt ? format(new Date(user.joinedAt), 'yyyy-MM-dd') : 'N/A'}</TableCell>
+                                        {/* Add actions like edit role, delete user etc. */}
+                                         {/* <TableCell>
+                                            <Button variant="outline" size="sm">Actions</Button>
+                                        </TableCell> */}
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                        <p className="text-center text-muted-foreground">No other users found.</p>
+                    )}
+                </CardContent>
+            </Card>
+        )}
+
 
       {/* User's Posts Section */}
         <div>
