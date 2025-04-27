@@ -3,7 +3,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Home, BookOpen, Hash, Star } from 'lucide-react';
+import { Home, BookOpen, Hash, Star, Gamepad2, Target, Square } from 'lucide-react'; // Added Gamepad2, Target, Square
 import {
   Sidebar as ShadSidebar,
   SidebarContent,
@@ -32,10 +32,16 @@ const popularPosts = [
   { title: '10 Healthy Habits', slug: 'healthy-habits' },
 ];
 
+const funGames = [
+    { name: 'Balloon Buster', slug: 'balloon-buster', icon: <Target /> },
+    { name: 'Platformer Fun', slug: 'platformer-fun', icon: <Square /> },
+     // Add more placeholder games here
+];
+
 export default function Sidebar() {
   return (
-    <ShadSidebar side="left" variant="sidebar" collapsible="offcanvas"> {/* Changed from 'icon' to 'offcanvas' */}
-      <SidebarContent className="p-0 pt-4"> {/* Added pt-4 */}
+    <ShadSidebar side="left" variant="sidebar" collapsible="offcanvas">
+      <SidebarContent className="p-0 pt-10"> {/* Increased top padding */}
          <SidebarMenu className="p-2">
             <SidebarMenuItem>
               <SidebarMenuButton href="/" tooltip="Home">
@@ -89,6 +95,30 @@ export default function Sidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <SidebarSeparator />
+
+        {/* Fun Tab Section */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center gap-2">
+            <Gamepad2 />
+            <span>Fun Tab</span>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {funGames.map((game) => (
+                <SidebarMenuItem key={game.slug}>
+                  {/* Using # as href for now, replace with actual routes when games are built */}
+                  <SidebarMenuButton href="#" size="sm" tooltip={game.name}>
+                     {game.icon}
+                    <span>{game.name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
       </SidebarContent>
       <SidebarFooter className="p-2">
         {/* Footer content if needed */}
