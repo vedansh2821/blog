@@ -36,9 +36,12 @@ export interface Post {
     rating?: number; // Optional average rating
     views?: number; // Optional view count
     excerpt: string; // Ensure excerpt is always present
+    heading?: string;
+    subheadings?: string[];
+    paragraphs?: string[];
 }
 
 // Often similar to Post, but might omit 'content' for brevity
-export interface RelatedPost extends Omit<Post, 'content' | 'tags' | 'rating' | 'views' | 'updatedAt' | 'author'> {
-   author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info needed for cards
+export interface RelatedPost extends Omit<Post, 'content' | 'tags' | 'rating' | 'views' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs'> {
+    author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info needed for cards
 }
