@@ -7,6 +7,9 @@ import bcrypt from 'bcrypt'; // Import bcrypt
 
 interface MockUser extends AuthUser {
     hashedPassword?: string; // Store hashed password here
+    dob?: string | null; // Added Date of Birth (YYYY-MM-DD)
+    phone?: string | null; // Added Phone Number
+    joinedAt: Date; // Added Join Date (non-optional)
 }
 
 // --- In-Memory Stores ---
@@ -20,26 +23,71 @@ let userIdCounter = 1;
 export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
     console.log(`[Mock DB] Finding user by email: ${email}`);
     const user = users.find(u => u.email === email);
-    return user ? { ...user } : null; // Return a copy
+    // Ensure joinedAt is returned as a Date object
+    return user ? { ...user, joinedAt: new Date(user.joinedAt) } : null; // Return a copy
 };
 
 export const findUserById = async (id: string): Promise<MockUser | null> => {
     console.log(`[Mock DB] Finding user by ID: ${id}`);
     const user = users.find(u => u.id === id);
-    return user ? { ...user } : null;
+     // Ensure joinedAt is returned as a Date object
+    return user ? { ...user, joinedAt: new Date(user.joinedAt) } : null;
 };
 
-export const createUser = async (userData: Omit<MockUser, 'id'>): Promise<MockUser> => {
+export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): Promise<MockUser> => {
     const newUser: MockUser = {
         ...userData,
         id: `user-${userIdCounter++}`, // Use a simple counter for predictable IDs during seeding/dev
+        joinedAt: new Date(), // Set join date on creation
+        dob: userData.dob || null, // Ensure dob and phone are handled
+        phone: userData.phone || null,
     };
     console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}, ID: ${newUser.id}`);
     users.push(newUser);
     // Don't return password hash in the response object sent back typically
     const { hashedPassword, ...userResponse } = newUser;
-    return userResponse as MockUser; // Return a copy without the password hash
+    return { ...userResponse, joinedAt: new Date(userResponse.joinedAt) } as MockUser; // Return copy without hash, ensure date object
 };
+
+// Function to update user profile information (name, dob, phone)
+export const updateUser = async (userId: string, updates: { name?: string; dob?: string | null; phone?: string | null }): Promise<MockUser | null> => {
+    console.log(`[Mock DB] Updating user ID: ${userId}`, updates);
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+        console.log(`[Mock DB] User not found for update: ${userId}`);
+        return null;
+    }
+
+    // Create updated user object, filtering out undefined fields from updates
+    const updatedUser: MockUser = {
+        ...users[userIndex],
+        ...(updates.name !== undefined && { name: updates.name }),
+        ...(updates.dob !== undefined && { dob: updates.dob }),
+        ...(updates.phone !== undefined && { phone: updates.phone }),
+    };
+
+    users[userIndex] = updatedUser;
+    console.log(`[Mock DB] User updated: ${updatedUser.email}`);
+
+    // Return updated user without password hash
+    const { hashedPassword, ...userResponse } = updatedUser;
+     return { ...userResponse, joinedAt: new Date(userResponse.joinedAt) } as MockUser; // Ensure date object
+}
+
+// Function to update user password
+export const updatePassword = async (userId: string, newPasswordHash: string): Promise<boolean> => {
+    console.log(`[Mock DB] Updating password for user ID: ${userId}`);
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) {
+        console.log(`[Mock DB] User not found for password update: ${userId}`);
+        return false;
+    }
+
+    users[userIndex].hashedPassword = newPasswordHash;
+    console.log(`[Mock DB] Password updated for: ${users[userIndex].email}`);
+    return true;
+}
+
 
 // --- Post Functions ---
 
@@ -51,6 +99,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
             slug: 'unknown',
             avatarUrl: `https://i.pravatar.cc/40?u=unknown`,
             bio: 'Author information not available.',
+            joinedAt: new Date(0), // Default date for unknown
         };
     }
     return {
@@ -59,6 +108,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
         slug: user.id, // Use user ID as author slug for simplicity
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Bio for ${user.name || user.email}`, // Simple bio
+        joinedAt: new Date(user.joinedAt), // Include joinedAt
     };
 };
 
@@ -71,6 +121,12 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
       .replace(/\s+/g, '-') // Replace spaces with hyphens
       .replace(/-+/g, '-') // Replace multiple hyphens with single
       .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
+
+    // Handle potential empty slug after sanitization
+    if (!baseSlug) {
+        baseSlug = `post-${Date.now()}`;
+    }
+
 
     let finalSlug = baseSlug;
     let counter = 1;
@@ -277,6 +333,8 @@ const seedData = async () => {
            role: 'admin',
            hashedPassword: adminPasswordHash,
            photoURL: 'https://i.pravatar.cc/150?u=vedansh2821',
+           dob: '1990-01-01',
+           phone: '123-456-7890',
        });
 
        // Create regular users
@@ -287,6 +345,8 @@ const seedData = async () => {
            role: 'user',
            hashedPassword: bobPasswordHash,
            photoURL: 'https://i.pravatar.cc/150?u=bob',
+           dob: '1995-05-15',
+           phone: null,
        });
 
        const alicePasswordHash = await bcrypt.hash('password456', 10);
@@ -296,6 +356,8 @@ const seedData = async () => {
            role: 'user',
            hashedPassword: alicePasswordHash,
            photoURL: 'https://i.pravatar.cc/150?u=alice',
+           dob: null,
+           phone: '987-654-3210',
        });
 
         // Create posts (use addUniqueSuffix: false for seeding to get predictable slugs)
@@ -345,7 +407,7 @@ const seedData = async () => {
           }, false);
 
         console.log("[Mock DB] Seed data creation finished.");
-        console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role})));
+        console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt})));
         console.log("[Mock DB] Posts:", posts.map(p => ({id: p.id, slug: p.slug, title: p.title})));
 
 
