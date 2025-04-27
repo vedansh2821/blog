@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Gamepad2, Construction } from 'lucide-react'; // Added Construction icon
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { cn } from '@/lib/utils'; // Import cn
 
 
 // Example Placeholder Game Card Component
