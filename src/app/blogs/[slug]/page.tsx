@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -42,6 +41,10 @@ import type { Author, Comment, Post, RelatedPost } from '@/types/blog'; // Impor
 
 // Helper function to fetch post details from the API
 const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
+  if (!slug) {
+     console.error("[fetchPostDetails] Attempted to fetch with empty or invalid slug.");
+     return null;
+  }
   console.log(`[fetchPostDetails] Fetching post with slug: "${slug}" from API`);
   try {
       const response = await fetch(`/api/posts/${slug}`);
@@ -87,6 +90,7 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
 
 // Helper to fetch comments
 const fetchCommentsFromApi = async (postId: string): Promise<Comment[]> => {
+    if (!postId) return []; // Return empty if postId is invalid
     console.log(`[fetchComments] Fetching comments for postId=${postId}`);
     try {
         const response = await fetch(`/api/comments?postId=${postId}`);
@@ -116,6 +120,7 @@ const fetchCommentsFromApi = async (postId: string): Promise<Comment[]> => {
 
 // Helper to post a comment
 const postCommentToApi = async (postId: string, content: string, author: { id: string; name: string; avatarUrl?: string }, replyTo?: string): Promise<Comment | null> => {
+    if (!postId) return null; // Don't attempt if postId is invalid
     console.log(`[postComment] Posting comment for postId=${postId}, replyTo=${replyTo}`);
     try {
         const response = await fetch('/api/comments', {
@@ -139,9 +144,11 @@ const postCommentToApi = async (postId: string, content: string, author: { id: s
 
 // Helper to fetch related posts
 const fetchRelatedPostsFromApi = async (category: string, currentPostId: string): Promise<RelatedPost[]> => {
+   if (!category || !currentPostId) return []; // Guard against invalid inputs
   console.log(`[Related] Fetching related posts for category: ${category}, excluding: ${currentPostId}`);
   try {
-      const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=4`); // Fetch 4 to ensure 3 remain after filter
+      // Fetch more initially to increase chance of getting 3 *different* posts
+      const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=5`);
       if (!response.ok) {
            const errorText = await response.text();
            console.error(`[Related] API Error ${response.status}: ${errorText}`);
@@ -151,8 +158,8 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
 
       // Filter out the current post and ensure correct structure
        const posts: RelatedPost[] = (data.posts || [])
-        .filter((post: any) => post.id !== currentPostId)
-        .slice(0, 3) // Limit to 3 related posts
+        .filter((post: any) => post.id !== currentPostId) // Filter out the current post
+        .slice(0, 3) // THEN Limit to 3 related posts
         .map((post: any) => ({
             ...post,
             publishedAt: post.publishedAt ? new Date(post.publishedAt) : new Date(),
@@ -163,13 +170,11 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
                 slug: post.author?.slug || post.author?.id || 'unknown'
             },
              commentCount: post.commentCount ?? 0,
-             // Add other required fields from RelatedPost if missing from API with defaults
              excerpt: post.excerpt || post.title || 'No excerpt available',
              imageUrl: post.imageUrl || `https://picsum.photos/seed/${post.id}/600/400`,
              category: post.category || 'Uncategorized',
-             // Add heading if available, fallback to title
-             heading: post.heading || post.title || 'Related Post',
-             // Ensure subheadings/paragraphs are arrays (optional)
+             // Optional structured content fields
+             heading: post.heading,
              subheadings: post.subheadings || [],
              paragraphs: post.paragraphs || [],
         }));
@@ -295,11 +300,13 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() || !currentUser) {
+    if (!postId || !currentUser || !content.trim()) { // Check postId too
          if (!currentUser) {
             toast({ title: "Authentication Required", description: "Please log in to comment.", variant: "destructive" });
         } else if (!content.trim()) {
              toast({ title: "Empty Comment", description: "Please write something.", variant: "destructive" });
+        } else if (!postId) {
+             toast({ title: "Error", description: "Cannot post comment: Post ID is missing.", variant: "destructive" });
         }
         return;
      }
@@ -310,11 +317,9 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
         id: currentUser.id,
         name: currentUser.name || currentUser.email || 'Anonymous',
         avatarUrl: currentUser.photoURL || undefined,
-        // slug will be added by the backend or derived if needed
     };
 
     const newCommentData = await postCommentToApi(postId, content, authorInfo, replyTo);
-
 
     if (newCommentData) {
         onCommentSubmit(newCommentData); // Update UI optimistically or after API success
@@ -347,9 +352,9 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
         className="mb-2"
         rows={3}
         required={!!currentUser} // Only required if logged in
-        disabled={isSubmitting || !currentUser} // Disable if not logged in
+        disabled={isSubmitting || !currentUser || !postId} // Disable if not logged in or no postId
       />
-      <Button type="submit" disabled={isSubmitting || !content.trim() || !currentUser}>
+      <Button type="submit" disabled={isSubmitting || !content.trim() || !currentUser || !postId}>
          {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
         {isSubmitting ? 'Posting...' : (replyTo ? 'Post Reply' : 'Post Comment')}
       </Button>
@@ -475,18 +480,23 @@ export default function BlogPostPage() {
            console.log("[BlogPostPage] Post data fetched:", postData);
            setPost(postData);
 
-           // Fetch comments and related posts in parallel
-           const [commentsData, relatedPostsData] = await Promise.all([
-             fetchCommentsFromApi(postData.id), // Use postData.id obtained from the API
-             fetchRelatedPostsFromApi(postData.category, postData.id) // Use postData.id and category
-           ]);
+           // Fetch comments and related posts in parallel only if post exists
+           if (postData.id && postData.category) { // Ensure ID and category are present
+               const [commentsData, relatedPostsData] = await Promise.all([
+                 fetchCommentsFromApi(postData.id),
+                 fetchRelatedPostsFromApi(postData.category, postData.id)
+               ]);
 
-           if (!isMounted) return; // Exit if component unmounted
+               if (!isMounted) return; // Exit if component unmounted
 
-            console.log("[BlogPostPage] Comments fetched:", commentsData);
-            console.log("[BlogPostPage] Related posts fetched:", relatedPostsData);
-           setComments(commentsData);
-           setRelatedPosts(relatedPostsData);
+               console.log("[BlogPostPage] Comments fetched:", commentsData);
+               console.log("[BlogPostPage] Related posts fetched:", relatedPostsData);
+               setComments(commentsData);
+               setRelatedPosts(relatedPostsData);
+           } else {
+               console.warn("[BlogPostPage] Post data loaded but missing ID or category, cannot fetch comments/related posts.");
+           }
+
         } else {
            console.error(`Post not found for slug: ${slug}`);
            setPost(null); // Explicitly set to null when not found
@@ -583,7 +593,6 @@ export default function BlogPostPage() {
          // Ensure post exists and user can edit
          if (!post || !canEditOrDelete) return;
          console.log("Edit button clicked for post:", post?.slug);
-         // toast({ title: "Edit Functionality", description: "Navigating to edit page." });
          router.push(`/blogs/${post.slug}/edit`); // Navigate to the edit page
      };
 
@@ -628,7 +637,6 @@ export default function BlogPostPage() {
      // --- End Edit and Delete Handlers ---
 
    // Determine if the current user can edit/delete this post
-   // currentUser must exist, post must exist, and user is admin or author matches
    const canEditOrDelete = !!currentUser && !!post && (currentUser.role === 'admin' || currentUser.id === post.author?.id);
 
 
@@ -739,8 +747,18 @@ export default function BlogPostPage() {
           {/* Use prose-lg for better readability */}
           <div
              className="prose prose-lg dark:prose-invert max-w-none"
-             // Ensure post.content is a string before setting
-             dangerouslySetInnerHTML={{ __html: typeof post.content === 'string' ? post.content : '' }}
+             // Render content safely based on structured data if available, otherwise use raw content
+             // Prefer structured data for rendering if it exists
+             dangerouslySetInnerHTML={
+                 { __html: (post.heading || (post.subheadings && post.subheadings.length > 0) || (post.paragraphs && post.paragraphs.length > 0))
+                     ? `
+                         ${post.heading ? `<h1 class="text-2xl font-bold mb-4">${post.heading}</h1>` : ''}
+                         ${post.subheadings && post.subheadings.length > 0 ? `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>${post.subheadings.map(sub => `<li class="mb-2"><h3 class="text-lg font-medium">${sub.trim()}</h3></li>`).join('')}</ul>` : ''}
+                         ${post.paragraphs && post.paragraphs.length > 0 ? `<div class="prose-p:my-4">${post.paragraphs.filter(p=>p.trim()).map(p => `<p>${p.trim()}</p>`).join('')}</div>` : ''}
+                     `
+                     : (typeof post.content === 'string' ? post.content : '') // Fallback to raw content
+                 }
+             }
            />
 
             {tags.length > 0 && (
@@ -828,7 +846,8 @@ export default function BlogPostPage() {
        {/* Comments Section */}
        <section id="comment-section" className="mt-16 max-w-3xl mx-auto">
          <h2 className="text-2xl font-bold mb-6">{commentCount} Comments</h2>
-         <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo || undefined}/>
+         {/* Ensure post.id exists before rendering comment form */}
+         {post.id && <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo || undefined}/> }
           {replyingTo && (
                 <div className="mb-4 p-2 bg-accent/50 rounded-md text-sm flex justify-between items-center">
                     <span>Replying to comment...</span> {/* Simplified message */}
@@ -840,7 +859,8 @@ export default function BlogPostPage() {
            {comments.length > 0 ? (
               comments.map(comment => (
                  <React.Fragment key={comment.id}>
-                    <CommentItem comment={comment} postId={post.id} onReply={handleStartReply} />
+                    {/* Ensure post.id exists before passing to CommentItem */}
+                    {post.id && <CommentItem comment={comment} postId={post.id} onReply={handleStartReply} />}
                     {/* Add separator between top-level comments only */}
                     {!comment.replies || comment.replies.length === 0 && <Separator className="last:hidden" />}
                  </React.Fragment>

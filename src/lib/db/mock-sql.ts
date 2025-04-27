@@ -1,5 +1,4 @@
 
-
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -24,7 +23,7 @@ let userIdCounter = 1;
 
 export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
     console.log(`[Mock DB] Finding user by email: ${email}`);
-    const user = users.find(u => u.email === email);
+    const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase()); // Case-insensitive email check
     if (user) {
          console.log(`[Mock DB] User found for ${email}. Stored Hash: ${user.hashedPassword ? user.hashedPassword.substring(0, 10) + '...' : 'NONE'}`);
          // Ensure joinedAt is returned as a Date object
@@ -57,6 +56,7 @@ export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): P
     const newUser: MockUser = {
         ...userData,
         id: `user-${userIdCounter++}`, // Use a simple counter for predictable IDs during seeding/dev
+        email: userData.email?.toLowerCase(), // Store email in lowercase
         joinedAt: new Date(), // Set join date on creation
         dob: userData.dob || null, // Ensure dob and phone are handled
         phone: userData.phone || null,
@@ -133,47 +133,69 @@ const createAuthorObject = (user: MockUser | null): Author => {
     };
 };
 
-// Modify generateSlug to create deterministic slugs by default
-// Add a suffix only if addUniqueSuffix is true OR if the base slug already exists
+
+// Updated slug generation: only adds suffix if collision detected OR addUniqueSuffix=true
 const generateSlug = (title: string, addUniqueSuffix: boolean = false): string => {
     let baseSlug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single
-      .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+        .replace(/\s+/g, '-')        // Replace spaces with hyphens
+        .replace(/-+/g, '-')         // Replace multiple hyphens with single
+        .replace(/^-+|-+$/g, '');    // Trim leading/trailing hyphens
 
     // Handle potential empty slug after sanitization
     if (!baseSlug) {
         baseSlug = `post-${Date.now()}`;
     }
 
-
     let finalSlug = baseSlug;
     let counter = 1;
-    let needsSuffix = addUniqueSuffix;
+    let needsSuffixCheck = true; // Start by checking if base slug exists
 
-    // Check for existing slug even if suffix wasn't explicitly requested
-    // Use case-insensitive comparison for checking existence
-    while (posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase())) {
-        needsSuffix = true; // Force suffix if collision detected
-        finalSlug = `${baseSlug}-${counter}`;
-        counter++;
-         // Safety break for extreme cases
-         if (counter > 100) {
-              console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
-              finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
-              break;
-          }
+    // Keep checking for collision and appending counter until a unique slug is found
+    while (needsSuffixCheck) {
+        const slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
+
+        if (slugExists) {
+            // Collision found, append counter and check again in the next iteration
+            finalSlug = `${baseSlug}-${counter}`;
+            counter++;
+        } else {
+            // No collision, this slug is unique
+            needsSuffixCheck = false;
+        }
+
+        // Safety break for extreme cases
+        if (counter > 100) {
+            console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
+            finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
+            break;
+        }
     }
 
+    // If addUniqueSuffix was explicitly true and no collision was detected initially,
+    // we still need to add a suffix (e.g., for API-created posts).
+    // Use the counter value (which would be 1 if no collision was found).
+    if (addUniqueSuffix && counter === 1 && posts.some(p => p.slug.toLowerCase() === baseSlug.toLowerCase())) {
+       // This condition handles the case where the base slug already exists,
+       // but the while loop exited because the FIRST attempt (baseSlug-1) was unique.
+       // We should use the first available suffix (baseSlug-1).
+       finalSlug = `${baseSlug}-${counter}`; // This will be baseSlug-1
+    } else if (addUniqueSuffix && counter === 1 && !posts.some(p => p.slug.toLowerCase() === baseSlug.toLowerCase())) {
+        // If addUniqueSuffix is true and the base slug was already unique, we still might want a suffix
+        // depending on requirements. For simplicity, let's NOT add one here if base is unique.
+        // If you ALWAYS want a suffix with addUniqueSuffix=true, uncomment the next line.
+        // finalSlug = `${baseSlug}-${counter}`;
+    }
+
+
+    console.log(`[Mock DB] Generated slug: ${finalSlug} for title: "${title}" (addUniqueSuffix: ${addUniqueSuffix})`);
     return finalSlug;
 };
 
 
-// Modify createPost to accept the addUniqueSuffix parameter
 export const createPost = async (
-    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt' | 'heading' | 'subheadings' | 'paragraphs'> & { authorId: string, content: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
+    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'> & { authorId: string, content?: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
     addUniqueSuffix: boolean = false // Default to false (for seeding)
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
@@ -181,38 +203,71 @@ export const createPost = async (
         throw new Error(`[Mock DB] Author not found for ID: ${postData.authorId}`);
     }
 
+    // Construct content if structured fields are provided
+     let constructedContent = postData.content || ''; // Use provided content as default
+     if (!constructedContent && (postData.heading || postData.subheadings || postData.paragraphs)) {
+         constructedContent = ''; // Start fresh if structure exists but content doesn't
+         if (postData.heading) {
+             constructedContent += `<h1 class="text-2xl font-bold mb-4">${postData.heading}</h1>`;
+         }
+         if (postData.subheadings && postData.subheadings.length > 0) {
+            constructedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`; // Added title for subheadings section
+            postData.subheadings.forEach(subheading => {
+               if (typeof subheading === 'string' && subheading.trim()) {
+                   constructedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`; // Added styling
+               }
+            });
+            constructedContent += `</ul>`;
+        }
+        if (postData.paragraphs && postData.paragraphs.length > 0) {
+            const validParagraphs = postData.paragraphs.filter(p => typeof p === 'string' && p.trim());
+            if (validParagraphs.length > 0) {
+                constructedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`; // Wrap paragraphs
+            }
+        }
+     }
+
+     // Ensure content is not empty
+     if (!constructedContent.trim()) {
+         console.warn("[Mock DB] Post content is empty after construction. Using placeholder.");
+         constructedContent = "<p>Placeholder content.</p>";
+     }
+
+
     const now = new Date();
     const newPost: Post = {
         id: `post-${postIdCounter++}`,
-        // Use the new parameter here when calling generateSlug
         slug: generateSlug(postData.title, addUniqueSuffix),
         title: postData.title,
-        content: postData.content,
+        content: constructedContent, // Use constructed or provided content
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
         category: postData.category,
-        author: createAuthorObject(author), // Author object now includes Date object for joinedAt
+        author: createAuthorObject(author),
         publishedAt: now,
         updatedAt: now,
         commentCount: 0,
-        views: Math.floor(Math.random() * 1000), // Add random views
-        excerpt: postData.excerpt || postData.content.substring(0, 150) + '...',
+        views: Math.floor(Math.random() * 1000),
+        excerpt: postData.excerpt || constructedContent.replace(/<[^>]*>/g, '').substring(0, 150) + '...', // Auto-generate from constructed content
         tags: postData.tags || [],
-        rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Random rating 3.0-5.0
-        ratingCount: Math.floor(Math.random() * 50) + 5, // Add rating count
-        heading: postData.heading, // Include structured content fields
-        subheadings: postData.subheadings,
-        paragraphs: postData.paragraphs,
+        rating: parseFloat((Math.random() * 2 + 3).toFixed(1)),
+        ratingCount: Math.floor(Math.random() * 50) + 5,
+        heading: postData.heading || postData.title, // Store raw heading
+        subheadings: postData.subheadings || [], // Store raw subheadings
+        paragraphs: postData.paragraphs || [], // Store raw paragraphs
     };
     console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
-    // Ensure dates are Date objects when returning
     return { ...newPost, publishedAt: new Date(newPost.publishedAt), updatedAt: new Date(newPost.updatedAt) };
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
-    const lowerCaseSlug = slug.toLowerCase();
+    const lowerCaseSlug = slug?.toLowerCase(); // Handle potential null/undefined slug
+    if (!lowerCaseSlug) {
+        console.warn(`[Mock DB] findPostBySlug called with invalid slug: ${slug}`);
+        return null;
+    }
     console.log(`[Mock DB] Finding post by slug (case-insensitive): "${lowerCaseSlug}"`);
-    // Find using case-insensitive comparison
+
     const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (!post) {
         console.warn(`[Mock DB] Post with slug "${lowerCaseSlug}" not found.`);
@@ -220,9 +275,8 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
     }
      console.log(`[Mock DB] Found post with ID: ${post.id} for slug: ${slug}`);
 
-    // Simulate fetching author details again (or ensure they are always embedded)
+    // Simulate fetching author details again
     const author = await findUserById(post.author.id);
-    // Ensure dates are Date objects when returning
     return {
         ...post,
         author: createAuthorObject(author),
@@ -247,7 +301,6 @@ export const findPosts = async (options: {
         filtered = filtered.filter(p => p.category.toLowerCase() === category.toLowerCase());
     }
     if (authorId) {
-        // Filter by the author's ID directly
         filtered = filtered.filter(p => p.author.id === authorId);
     }
     if (query) {
@@ -257,11 +310,10 @@ export const findPosts = async (options: {
             p.excerpt.toLowerCase().includes(lowerQuery) ||
             p.content.toLowerCase().includes(lowerQuery) ||
             p.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-             p.author.name.toLowerCase().includes(lowerQuery)
+             p.author.name?.toLowerCase().includes(lowerQuery) // Check optional author name
         );
     }
 
-    // Sort by date descending
     filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
     const totalResults = filtered.length;
@@ -271,7 +323,6 @@ export const findPosts = async (options: {
     const postsForPage = filtered.slice(startIndex, endIndex);
     const hasMore = endIndex < totalResults;
 
-    // Ensure author details and dates are up-to-date for the returned page
     const postsWithDetails = await Promise.all(postsForPage.map(async (post) => {
         const pubDate = new Date(post.publishedAt);
         const updDate = post.updatedAt ? new Date(post.updatedAt) : undefined;
@@ -291,18 +342,23 @@ export const findPosts = async (options: {
 
 export const updatePost = async (
     slug: string,
+    // Ensure updateData includes potentially partial structured content
     updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'>> & { requestingUserId: string }
 ): Promise<Post | null> => {
-    console.log(`[Mock DB] Updating post with slug: ${slug}`);
-    const lowerCaseSlug = slug.toLowerCase();
-    // Find using case-insensitive comparison
+    const lowerCaseSlug = slug?.toLowerCase();
+     if (!lowerCaseSlug) {
+        console.warn(`[Mock DB] updatePost called with invalid slug: ${slug}`);
+        return null;
+    }
+    console.log(`[Mock DB] Updating post with slug: ${lowerCaseSlug}`);
+
     const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for update: ${slug}`);
         return null;
     }
 
-     // **Authorization Check**: Get requesting user and check role/ownership
+     // Authorization Check
      const requestingUser = await findUserById(updateData.requestingUserId);
      if (!requestingUser) {
          console.error(`[Mock DB] Authorization failed: Requesting user ${updateData.requestingUserId} not found.`);
@@ -314,7 +370,6 @@ export const updatePost = async (
           throw new Error("Unauthorized");
      }
 
-
     const originalPost = posts[postIndex];
 
     // Generate new slug ONLY if title changed
@@ -322,28 +377,65 @@ export const updatePost = async (
                     ? generateSlug(updateData.title, true) // Force unique suffix if title changes
                     : originalPost.slug;
 
+    // Construct updated content if structured fields are changing
+    let updatedContent = updateData.content ?? originalPost.content; // Use new content if provided
+     const hasStructureUpdate = updateData.heading !== undefined || updateData.subheadings !== undefined || updateData.paragraphs !== undefined;
+
+     if (hasStructureUpdate) {
+        const currentHeading = updateData.heading ?? originalPost.heading;
+        const currentSubheadings = updateData.subheadings ?? originalPost.subheadings;
+        const currentParagraphs = updateData.paragraphs ?? originalPost.paragraphs;
+
+        updatedContent = ''; // Reconstruct from potentially updated parts
+         if (currentHeading) {
+             updatedContent += `<h1 class="text-2xl font-bold mb-4">${currentHeading}</h1>`;
+         }
+         if (currentSubheadings && currentSubheadings.length > 0) {
+             updatedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`;
+             currentSubheadings.forEach(subheading => {
+                if (typeof subheading === 'string' && subheading.trim()) {
+                    updatedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`;
+                }
+             });
+             updatedContent += `</ul>`;
+         }
+         if (currentParagraphs && currentParagraphs.length > 0) {
+             const validParagraphs = currentParagraphs.filter(p => typeof p === 'string' && p.trim());
+             if (validParagraphs.length > 0) {
+                 updatedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`;
+             }
+         }
+         // If only structured data was updated, but no actual content generated, keep original content?
+         // Or should it default to empty? Let's keep original if new construction is empty.
+         if (!updatedContent.trim()) {
+             updatedContent = originalPost.content;
+         }
+     }
+
 
     const updatedPost: Post = {
         ...originalPost,
-        ...updateData, // Apply updates from payload
-        slug: newSlug, // Assign the potentially new slug
+        ...updateData, // Apply other updates from payload
+        slug: newSlug,
+        content: updatedContent, // Assign newly constructed/updated content
         updatedAt: new Date(),
-        // Re-generate excerpt if content changed and no explicit excerpt provided
-        // Also ensure fallback if content itself is undefined/null
-        excerpt: (updateData.content && !updateData.excerpt)
-                  ? (updateData.content.substring(0, 150) + '...')
-                  : (updateData.excerpt ?? originalPost.excerpt),
-        // Ensure author remains the original author
-        author: originalPost.author,
+        excerpt: updateData.excerpt ?? originalPost.excerpt, // Use new excerpt if provided, else keep old
+        // Keep raw structured fields updated as well
+        heading: updateData.heading ?? originalPost.heading,
+        subheadings: updateData.subheadings ?? originalPost.subheadings,
+        paragraphs: updateData.paragraphs ?? originalPost.paragraphs,
     };
+
+    // Update excerpt if content was changed and no new excerpt was provided
+     if ((updateData.content || hasStructureUpdate) && !updateData.excerpt) {
+         updatedPost.excerpt = updatedContent.replace(/<[^>]*>/g, '').substring(0, 150) + '...';
+     }
 
 
     posts[postIndex] = updatedPost;
     console.log(`[Mock DB] Post updated: ${updatedPost.title} (Slug: ${updatedPost.slug})`);
 
-    // Fetch potentially updated author details (name might change etc) - not strictly necessary if author doesn't change
     const author = await findUserById(updatedPost.author.id);
-    // Ensure dates are Date objects when returning
     return {
         ...updatedPost,
         author: createAuthorObject(author),
@@ -353,27 +445,31 @@ export const updatePost = async (
 };
 
 export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
-    console.log(`[Mock DB] Deleting post with slug: ${slug} by user: ${requestingUserId}`);
-    const lowerCaseSlug = slug.toLowerCase();
-    // Find using case-insensitive comparison
+    const lowerCaseSlug = slug?.toLowerCase();
+    if (!lowerCaseSlug) {
+        console.warn(`[Mock DB] deletePost called with invalid slug: ${slug}`);
+        return false;
+    }
+    console.log(`[Mock DB] Deleting post with slug: ${lowerCaseSlug} by user: ${requestingUserId}`);
+
     const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for delete: ${slug}`);
-        return false;
+        return false; // Indicate post not found
     }
 
-    // **Authorization Check**: Ensure the requestingUserId matches the post's author OR user is admin
+    // Authorization Check
     const user = await findUserById(requestingUserId);
     const postAuthorId = posts[postIndex].author.id;
 
     if (!user) {
          console.error(`[Mock DB] Authorization failed: Requesting user ${requestingUserId} not found.`);
-         throw new Error("Unauthorized"); // Or return false/error response in API
+         throw new Error("Unauthorized");
      }
 
     if (postAuthorId !== requestingUserId && user.role !== 'admin') {
         console.error(`[Mock DB] Authorization failed: User ${requestingUserId} (Role: ${user.role}) cannot delete post owned by ${postAuthorId}`);
-        throw new Error("Unauthorized"); // Or return false/error response in API
+        throw new Error("Unauthorized");
     }
 
     posts.splice(postIndex, 1);
@@ -399,7 +495,7 @@ const seedData = async () => {
            name: 'Vedansh V.',
            role: 'admin',
            hashedPassword: adminPasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=vedansh', // Updated avatar seed
+           photoURL: 'https://i.pravatar.cc/150?u=vedansh',
            dob: '1990-01-01',
            phone: '123-456-7890',
        });
@@ -412,7 +508,7 @@ const seedData = async () => {
            name: 'Aayushi P.',
            role: 'user',
            hashedPassword: aayushiPasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=aayushi', // Updated avatar seed
+           photoURL: 'https://i.pravatar.cc/150?u=aayushi',
            dob: '1995-05-15',
            phone: null,
        });
@@ -424,7 +520,7 @@ const seedData = async () => {
            name: 'Alex G.',
            role: 'user',
            hashedPassword: alexPasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=alex', // Updated avatar seed
+           photoURL: 'https://i.pravatar.cc/150?u=alex',
            dob: null,
            phone: '987-654-3210',
        });
@@ -434,11 +530,9 @@ const seedData = async () => {
         // Create posts (use addUniqueSuffix: false for seeding to get predictable slugs)
         await createPost({
             title: "Mastering TypeScript for Modern Web Development",
-            content: "<p>TypeScript has become an essential tool for building robust and scalable web applications. This post explores key concepts like static typing, interfaces, generics, and decorators.</p><h2>Why TypeScript?</h2><ul><li>Improved code quality and maintainability.</li><li>Early error detection during development.</li><li>Enhanced developer experience with autocompletion and refactoring tools.</li></ul><p>We'll dive into practical examples using React and Node.js.</p>",
             category: "Technology",
             authorId: adminUser.id, // Vedansh
             tags: ["typescript", "web development", "javascript", "react"],
-            excerpt: "Explore the benefits and core features of TypeScript for building scalable and maintainable web applications.",
             imageUrl: `https://picsum.photos/seed/typescript-mastery/1200/600`,
             heading: "Mastering TypeScript", // Added heading
             subheadings: ["Why TypeScript?", "Key Features"], // Added subheadings
@@ -447,15 +541,13 @@ const seedData = async () => {
                 "Improved code quality and maintainability. Early error detection during development. Enhanced developer experience with autocompletion and refactoring tools.",
                 "We'll dive into practical examples using React and Node.js."
             ]
-        }, false);
+        }, false); // addUniqueSuffix = false for seeding
 
         await createPost({
              title: "Sustainable Living: Simple Steps for a Greener Life",
-             content: "<p>Making sustainable choices doesn't have to be overwhelming. This article provides actionable tips for reducing your environmental impact.</p><h3>Easy Swaps:</h3><ol><li>Reusable shopping bags</li><li>Water bottles and coffee cups</li><li>Switching to LED bulbs</li><li>Reducing meat consumption</li></ol><p>Every small step contributes to a healthier planet.</p>",
              category: "Lifestyle",
              authorId: user1.id, // Aayushi
              tags: ["sustainability", "eco-friendly", "minimalism", "green living"],
-             excerpt: "Discover simple, actionable steps towards a more sustainable and environmentally friendly lifestyle.",
              imageUrl: `https://picsum.photos/seed/sustainable-living/1200/600`,
              heading: "A Greener Life",
              subheadings: ["Easy Swaps"],
@@ -468,11 +560,9 @@ const seedData = async () => {
 
           await createPost({
               title: "The Rise of Remote Work: Challenges and Opportunities",
-              content: "<p>Remote work is transforming the professional landscape. We discuss the benefits, drawbacks, and tools needed for successful remote collaboration.</p><blockquote>\"The ability to work from anywhere is a game-changer, but requires discipline and effective communication.\"</blockquote><p>Adapting to this new normal is key for both employees and employers.</p>",
               category: "Technology", // Or could be Lifestyle/Business
               authorId: user2.id, // Alex G.
               tags: ["remote work", "productivity", "future of work", "collaboration"],
-              excerpt: "An analysis of the remote work trend, covering its challenges, benefits, and tools for success.",
               imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`,
               heading: "Remote Work Revolution",
               paragraphs: [
@@ -484,11 +574,9 @@ const seedData = async () => {
 
          await createPost({
            title: "Mindfulness Meditation: A Beginner's Guide",
-           content: "<p>Learn the basics of mindfulness meditation and how it can help reduce stress and improve focus.</p><h4>Getting Started:</h4><ul><li>Find a quiet space.</li><li>Sit comfortably.</li><li>Focus on your breath.</li><li>Gently redirect your attention when your mind wanders.</li></ul><p>Even 5-10 minutes daily can make a difference.</p>",
            category: "Health",
            authorId: user1.id, // Aayushi
            tags: ["meditation", "mindfulness", "wellness", "mental health", "stress relief"],
-           excerpt: "A simple guide for beginners to start practicing mindfulness meditation for reduced stress and improved focus.",
            imageUrl: `https://picsum.photos/seed/mindfulness-guide/1200/600`,
            heading: "Beginner's Mindfulness",
            subheadings: ["Getting Started"],
@@ -501,11 +589,9 @@ const seedData = async () => {
 
           await createPost({
              title: "Exploring Southeast Asia: A Backpacker's Dream",
-             content: "<p>Southeast Asia offers incredible experiences for budget travelers. From vibrant cities to stunning beaches, here's a look at must-visit destinations.</p><img src='https://picsum.photos/seed/sea-travel/800/400' alt='Southeast Asia Landscape' /><p>Tips on accommodation, food, and navigating different cultures.</p>",
              category: "Travel",
              authorId: user2.id, // Alex G.
              tags: ["travel", "backpacking", "southeast asia", "budget travel", "adventure"],
-             excerpt: "A backpacker's guide to exploring the diverse and beautiful countries of Southeast Asia.",
               imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`,
               heading: "SEA Backpacking",
               paragraphs: [
@@ -516,11 +602,9 @@ const seedData = async () => {
 
           await createPost({
              title: "Introduction to GraphQL vs REST APIs",
-             content: "<p>Comparing GraphQL and REST architectural styles for building APIs. Understanding the pros and cons of each approach.</p><h2>Key Differences:</h2><ul><li>Data Fetching: GraphQL allows clients to request exactly what they need.</li><li>Endpoints: REST typically uses multiple endpoints, while GraphQL uses a single endpoint.</li><li>Schema & Typing: GraphQL has a strong type system.</li></ul><p>Which one is right for your next project?</p>",
              category: "Technology",
              authorId: adminUser.id, // Vedansh
              tags: ["graphql", "rest", "api", "web development", "architecture"],
-             excerpt: "A comparison of GraphQL and REST APIs, highlighting their key differences, advantages, and disadvantages.",
               imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`,
               heading: "GraphQL vs REST",
               subheadings: ["Key Differences"],
@@ -534,11 +618,9 @@ const seedData = async () => {
            // Add a post in the 'Love' category
            await createPost({
              title: "Navigating Modern Relationships: Communication is Key",
-             content: "<p>Building and maintaining healthy relationships in today's fast-paced world requires conscious effort, especially in communication.</p><h3>Tips for Better Communication:</h3><ul><li><strong>Active Listening:</strong> Truly hear what your partner is saying, without interrupting.</li><li><strong>Express Needs Clearly:</strong> Avoid ambiguity; state your feelings and needs openly.</li><li><strong>Empathy:</strong> Try to understand your partner's perspective, even if you disagree.</li><li><strong>Constructive Conflict:</strong> Address disagreements respectfully, focusing on the issue, not the person.</li></ul><p>Investing in communication strengthens the foundation of any relationship.</p>",
              category: "Love", // New Category
              authorId: user1.id, // Aayushi
              tags: ["relationships", "communication", "love", "dating", "mental health"],
-             excerpt: "Exploring the importance of effective communication in modern relationships and practical tips to improve it.",
              imageUrl: `https://picsum.photos/seed/modern-love/1200/600`,
              heading: "Communication in Relationships",
              subheadings: ["Tips for Better Communication"],
@@ -561,8 +643,7 @@ const seedData = async () => {
  };
 
  // Initialize seed data in development if DB is empty (or always re-seed in dev)
- // Change the condition if you want to re-seed every time the server restarts in dev
- // if (process.env.NODE_ENV !== 'production' && users.length === 0) {
  if (process.env.NODE_ENV !== 'production') { // Re-seed every time in development
      seedData();
  }
+
