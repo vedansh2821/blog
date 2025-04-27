@@ -10,6 +10,8 @@ interface MockUser extends AuthUser {
     hashedPassword?: string; // Store hashed password here
     dob?: string | null; // Added Date of Birth (YYYY-MM-DD)
     phone?: string | null; // Added Phone Number
+    firstSchool?: string | null; // Added First School Name
+    petName?: string | null; // Added Pet's Name
     joinedAt: Date; // Added Join Date (non-optional)
 }
 
@@ -97,10 +99,12 @@ export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): P
         joinedAt: new Date(), // Set join date on creation
         dob: userData.dob || null, // Ensure dob and phone are handled
         phone: userData.phone || null,
+        firstSchool: userData.firstSchool || null, // Store security questions
+        petName: userData.petName || null,
     };
     // Ensure password hash exists before logging
     const hashSnippet = newUser.hashedPassword ? newUser.hashedPassword.substring(0, 10) + '...' : 'NONE PROVIDED';
-    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}, ID: ${newUser.id}, Hash: ${hashSnippet}`);
+    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}, ID: ${newUser.id}, Hash: ${hashSnippet}, First School: ${newUser.firstSchool}, Pet Name: ${newUser.petName}`);
     users.push(newUser);
     // Don't return password hash in the response object sent back typically
     const { hashedPassword, ...userResponse } = newUser;
@@ -146,6 +150,27 @@ export const updatePassword = async (userId: string, newPasswordHash: string): P
     return true;
 }
 
+// Function to verify security questions
+export const verifySecurityQuestions = async (userId: string, firstSchoolAnswer: string, petNameAnswer: string): Promise<boolean> => {
+    console.log(`[Mock DB] Verifying security questions for user ID: ${userId}`);
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+        console.log(`[Mock DB] User not found for security question verification: ${userId}`);
+        return false;
+    }
+
+    // Case-insensitive comparison for answers
+    const schoolMatch = user.firstSchool?.trim().toLowerCase() === firstSchoolAnswer?.trim().toLowerCase();
+    const petMatch = user.petName?.trim().toLowerCase() === petNameAnswer?.trim().toLowerCase();
+
+    if (!schoolMatch) console.log(`[Mock DB] First school mismatch: Expected "${user.firstSchool}", Got "${firstSchoolAnswer}"`);
+    if (!petMatch) console.log(`[Mock DB] Pet name mismatch: Expected "${user.petName}", Got "${petNameAnswer}"`);
+
+    const success = schoolMatch && petMatch;
+    console.log(`[Mock DB] Security question verification result for ${userId}: ${success}`);
+    return success;
+}
+
 
 // --- Post Functions ---
 
@@ -167,6 +192,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Posts by ${user.name || user.email}`, // Simple bio
         joinedAt: new Date(user.joinedAt), // Include joinedAt Date object
+        role: user.role, // Include role if needed
     };
 };
 
@@ -556,6 +582,8 @@ const seedData = async () => {
            photoURL: 'https://i.pravatar.cc/150?u=vedansh',
            dob: '1990-01-01',
            phone: '123-456-7890',
+           firstSchool: 'Sunrise Public School',
+           petName: 'Buddy',
        });
        console.log(`[Mock DB] Admin user created: ${adminUser.email}, ID: ${adminUser.id}, Password: ${adminPassword}`);
 
@@ -570,6 +598,8 @@ const seedData = async () => {
            photoURL: 'https://i.pravatar.cc/150?u=aayushi',
            dob: '1995-05-15',
            phone: null,
+           firstSchool: 'City Montessori',
+           petName: 'Fluffy',
        });
         console.log(`[Mock DB] User created: ${user1.email}, ID: ${user1.id}, Password: ${aayushiPassword}`);
 
@@ -583,6 +613,8 @@ const seedData = async () => {
            photoURL: 'https://i.pravatar.cc/150?u=alex',
            dob: null,
            phone: '987-654-3210',
+           firstSchool: 'Oakwood Elementary',
+           petName: 'Rex',
        });
         console.log(`[Mock DB] User created: ${user2.email}, ID: ${user2.id}, Password: ${alexPassword}`);
 
