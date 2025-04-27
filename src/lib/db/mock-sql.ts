@@ -44,10 +44,10 @@ export const findUserById = async (id: string): Promise<MockUser | null> => {
 };
 
 // Add function to get all users (excluding password hashes)
-export const getAllUsers = async (requestingUserId: string): Promise<Omit<MockUser, 'hashedPassword'>[]> => {
-    console.log(`[Mock DB] Getting all users, requested by: ${requestingUserId}`);
-    // In a real scenario, authorization would happen here or in the API route
-    // For mock, we assume the route already authorized the admin
+export const getAllUsers = async (): Promise<Omit<MockUser, 'hashedPassword'>[]> => {
+    // This function is now simplified and doesn't need the requesting user ID
+    // as the authorization check is expected to happen in the API route.
+    console.log(`[Mock DB] Getting all users.`);
     // Return copies of users without the password hash
     return users.map(user => {
         const { hashedPassword, ...userWithoutHash } = user;
@@ -163,7 +163,7 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
         while (true) {
             finalSlug = `${baseSlug}-${counter}`;
             slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
-            console.log(`[Mock DB] Slug Check: Testing "${finalSlug}". Exists=${slugExists}`);
+            // console.log(`[Mock DB] Slug Check: Testing "${finalSlug}". Exists=${slugExists}`);
             if (!slugExists) {
                 suffixAdded = true; // Mark that a suffix was added
                 break; // Found a unique slug with suffix
@@ -197,7 +197,7 @@ export const createPost = async (
     }
 
     // Log posts array before adding new one
-    console.log("[Mock DB createPost] Posts array BEFORE adding:", posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
+    // console.log("[Mock DB createPost] Posts array BEFORE adding:", posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
 
     // Construct content if structured fields are provided
      let constructedContent = postData.content || ''; // Use provided content as default
@@ -254,7 +254,7 @@ export const createPost = async (
     console.log(`[Mock DB createPost] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
     // Log posts array AFTER adding new one
-    console.log("[Mock DB createPost] Posts array AFTER adding:", posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
+    // console.log("[Mock DB createPost] Posts array AFTER adding:", posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
     return { ...newPost, publishedAt: new Date(newPost.publishedAt), updatedAt: new Date(newPost.updatedAt) };
 };
 
@@ -265,7 +265,7 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
-    console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
+    // console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
     const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
 
@@ -307,7 +307,7 @@ export const findPosts = async (options: {
 }): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
     const { page = 0, limit = 9, category, authorId, query } = options;
     console.log(`[Mock DB findPosts] Finding posts:`, options);
-    console.log(`[Mock DB findPosts] Current posts in store:`, posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
+    // console.log(`[Mock DB findPosts] Current posts in store:`, posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
 
 
     let filtered = [...posts]; // Start with a copy
@@ -331,7 +331,7 @@ export const findPosts = async (options: {
 
     // Sort AFTER filtering
     filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-     console.log(`[Mock DB findPosts] Posts after filtering and sorting:`, filtered.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
+     // console.log(`[Mock DB findPosts] Posts after filtering and sorting:`, filtered.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
 
 
     const totalResults = filtered.length;
@@ -341,7 +341,7 @@ export const findPosts = async (options: {
     const postsForPage = filtered.slice(startIndex, endIndex);
     const hasMore = endIndex < totalResults;
 
-     console.log(`[Mock DB findPosts] Pagination: page=${page}, limit=${limit}, totalResults=${totalResults}, totalPages=${totalPages}, startIndex=${startIndex}, endIndex=${endIndex}, hasMore=${hasMore}`);
+     // console.log(`[Mock DB findPosts] Pagination: page=${page}, limit=${limit}, totalResults=${totalResults}, totalPages=${totalPages}, startIndex=${startIndex}, endIndex=${endIndex}, hasMore=${hasMore}`);
 
 
     const postsWithDetails = await Promise.all(postsForPage.map(async (post) => {
@@ -351,7 +351,7 @@ export const findPosts = async (options: {
         return { ...post, publishedAt: pubDate, updatedAt: updDate, author: createAuthorObject(author) };
     }));
 
-     console.log(`[Mock DB findPosts] Returning ${postsWithDetails.length} posts for page ${page}`);
+     // console.log(`[Mock DB findPosts] Returning ${postsWithDetails.length} posts for page ${page}`);
 
     return {
         posts: postsWithDetails,
@@ -668,8 +668,8 @@ const seedData = async () => {
 
 
         console.log("[Mock DB] Seed data creation finished.");
-        console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt, hashSet: !!u.hashedPassword })));
-        console.log("[Mock DB] Posts:", posts.map(p => ({id: p.id, slug: p.slug, title: p.title})));
+        // console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt, hashSet: !!u.hashedPassword })));
+        // console.log("[Mock DB] Posts:", posts.map(p => ({id: p.id, slug: p.slug, title: p.title})));
 
         isSeeded = true; // Mark as seeded
 
@@ -683,4 +683,3 @@ const seedData = async () => {
      seedData();
  }
 
-```
