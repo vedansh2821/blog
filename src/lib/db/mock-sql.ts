@@ -19,6 +19,7 @@ const users: MockUser[] = [];
 const posts: Post[] = [];
 let postIdCounter = 1;
 let userIdCounter = 1;
+let isSeeded = false; // Flag to ensure seeding happens only once
 
 // --- User Functions ---
 
@@ -153,21 +154,18 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
 
     let finalSlug = baseSlug;
     let counter = 1;
-    let collisionDetected = false;
-
-    // Check if the base slug itself already exists
     let slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
-    collisionDetected = slugExists; // Mark if initial collision
+    let suffixAdded = false;
 
     // If collision or explicit suffix needed, start checking with suffixes
     if (slugExists || addUniqueSuffix) {
         console.log(`[Mock DB] Slug Check: Base slug "${baseSlug}" collision=${slugExists}, suffixForced=${addUniqueSuffix}. Starting suffix check.`);
-        // Keep checking for collision and appending counter until a unique slug is found
         while (true) {
             finalSlug = `${baseSlug}-${counter}`;
             slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
             console.log(`[Mock DB] Slug Check: Testing "${finalSlug}". Exists=${slugExists}`);
             if (!slugExists) {
+                suffixAdded = true; // Mark that a suffix was added
                 break; // Found a unique slug with suffix
             }
             counter++;
@@ -175,6 +173,7 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
              if (counter > 100) {
                 console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
                 finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
+                suffixAdded = true;
                 break;
             }
         }
@@ -510,6 +509,12 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
 
 // --- Seed Data (Optional) ---
 const seedData = async () => {
+     // Only seed if not already seeded in this server instance
+     if (isSeeded) {
+        console.log("[Mock DB] Already seeded. Skipping.");
+        return;
+     }
+
      // Clear existing data before seeding
      users.length = 0;
      posts.length = 0;
@@ -666,13 +671,16 @@ const seedData = async () => {
         console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt, hashSet: !!u.hashedPassword })));
         console.log("[Mock DB] Posts:", posts.map(p => ({id: p.id, slug: p.slug, title: p.title})));
 
+        isSeeded = true; // Mark as seeded
 
       } catch (error) {
          console.error("[Mock DB] Error seeding data:", error);
       }
  };
 
- // Initialize seed data in development if DB is empty (or always re-seed in dev)
- if (process.env.NODE_ENV !== 'production') { // Re-seed every time in development
+ // Initialize seed data only if not already seeded
+ if (!isSeeded) {
      seedData();
  }
+
+```
