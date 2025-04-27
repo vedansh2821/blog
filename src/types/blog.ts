@@ -9,6 +9,7 @@ export interface Author {
     socialLinks?: { platform: string; url: string }[]; // Optional social links
     website?: string; // Optional website
     joinedAt: Date | string; // Date the user joined
+    role?: 'user' | 'admin'; // Add role to Author type (optional)
 }
 
 export interface Comment {
@@ -28,7 +29,7 @@ export interface Post {
     content: string; // Assuming HTML content
     imageUrl: string;
     category: string;
-    author: Author; // Embed full author details
+    author: Author; // Embed full author details, now including optional role
     publishedAt: Date | string; // Can be Date object or ISO string
     updatedAt?: Date | string; // Optional last updated date
     commentCount: number;
@@ -45,3 +46,4 @@ export interface Post {
 export interface RelatedPost extends Omit<Post, 'content' | 'tags' | 'rating' | 'views' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs'> {
     author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info needed for cards
 }
+

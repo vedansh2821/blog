@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Calendar, MessageSquare, Share2, Facebook, Twitter, Linkedin } from 'lucide-react'; // Removed User icon as author block links now
+import { Calendar, MessageSquare, Share2, Facebook, Twitter, Linkedin, Award } from 'lucide-react'; // Added Award icon
 import { format } from 'date-fns';
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Post } from '@/types/blog'; // Import the Post type
+import { cn } from '@/lib/utils'; // Import cn
 
 
 interface BlogPostCardProps {
@@ -27,6 +28,8 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
   // Ensure publishedAt is a Date object for formatting
    const publishedDate = post.publishedAt instanceof Date ? post.publishedAt : new Date(post.publishedAt);
 
+   // Determine if the author is an admin to display the badge
+   const isAdminAuthor = post.author?.role === 'admin';
 
   return (
     <Card className="group overflow-hidden shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full">
@@ -58,7 +61,7 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
           {post.excerpt}
         </CardDescription>
          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-           {/* Author Link */}
+           {/* Author Link with Badge */}
            {post.author && (
              <div className="flex items-center gap-1">
                <Link href={`/authors/${post.author.slug}`} className="flex items-center gap-1 hover:text-primary transition-colors">
@@ -66,7 +69,11 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
                     <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
                     <AvatarFallback>{post.author.name?.charAt(0) || 'A'}</AvatarFallback>
                   </Avatar>
-                  <span>{post.author.name || 'Unknown'}</span>
+                  <span className={cn(isAdminAuthor && "font-medium")}>{post.author.name || 'Unknown'}</span>
+                   {/* Admin Author Badge */}
+                   {isAdminAuthor && (
+                       <Award className="h-3 w-3 text-destructive" title="Admin Author" />
+                   )}
                 </Link>
              </div>
            )}
@@ -116,3 +123,4 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
 function isValid(date: Date) {
   return date instanceof Date && !isNaN(date.getTime());
 }
+
