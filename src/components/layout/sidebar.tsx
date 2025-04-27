@@ -16,6 +16,7 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarSeparator,
+  useSidebar
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 
@@ -34,21 +35,27 @@ const popularPosts = [
 
 
 export default function Sidebar() {
+  const { setOpenMobile } = useSidebar(); // Get function to close mobile sidebar on link click
+
   return (
-    <ShadSidebar side="left" variant="sidebar" collapsible="icon"> {/* Changed collapsible to icon */}
-      <SidebarContent className="p-0 pt-16"> {/* Added top padding */}
+    <ShadSidebar side="left" variant="sidebar" collapsible="icon">
+      <SidebarContent className="p-0 pt-16">
          <SidebarMenu className="p-2">
             <SidebarMenuItem>
-              <SidebarMenuButton href="/" tooltip="Home">
-                <Home />
-                <span>Home</span>
-              </SidebarMenuButton>
+                <Link href="/" passHref legacyBehavior>
+                   <SidebarMenuButton tooltip="Home" onClick={() => setOpenMobile(false)}>
+                     <Home />
+                     <span>Home</span>
+                   </SidebarMenuButton>
+                 </Link>
             </SidebarMenuItem>
             <SidebarMenuItem>
-               <SidebarMenuButton href="/blogs" tooltip="All Blogs">
-                 <BookOpen />
-                 <span>Blogs</span>
-               </SidebarMenuButton>
+                <Link href="/blogs" passHref legacyBehavior>
+                   <SidebarMenuButton tooltip="All Blogs" onClick={() => setOpenMobile(false)}>
+                     <BookOpen />
+                     <span>Blogs</span>
+                   </SidebarMenuButton>
+                 </Link>
             </SidebarMenuItem>
           </SidebarMenu>
 
@@ -61,10 +68,12 @@ export default function Sidebar() {
             <SidebarMenu>
               {categories.map((category) => (
                 <SidebarMenuItem key={category.slug}>
-                  <SidebarMenuButton href={`/blogs/category/${category.slug}`} size="sm" tooltip={category.name}>
-                    {category.icon}
-                    <span>{category.name}</span>
-                  </SidebarMenuButton>
+                   <Link href={`/blogs?category=${category.slug}`} passHref legacyBehavior>
+                      <SidebarMenuButton size="sm" tooltip={category.name} onClick={() => setOpenMobile(false)}>
+                        {category.icon}
+                        <span>{category.name}</span>
+                      </SidebarMenuButton>
+                  </Link>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -82,10 +91,12 @@ export default function Sidebar() {
             <SidebarMenu>
               {popularPosts.map((post) => (
                 <SidebarMenuItem key={post.slug}>
-                  <SidebarMenuButton href={`/blogs/${post.slug}`} size="sm" tooltip={post.title}>
-                    {/* Removed icon span if not needed */}
-                    <span>{post.title}</span>
-                  </SidebarMenuButton>
+                  <Link href={`/blogs/${post.slug}`} passHref legacyBehavior>
+                      <SidebarMenuButton size="sm" tooltip={post.title} onClick={() => setOpenMobile(false)}>
+                        {/* Removed icon span if not needed */}
+                        <span>{post.title}</span>
+                      </SidebarMenuButton>
+                  </Link>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
@@ -94,13 +105,15 @@ export default function Sidebar() {
 
         <SidebarSeparator />
 
-        {/* Fun Tab Section - Changed to single link */}
+        {/* Fun Tab Section - Wrapped with Link */}
          <SidebarMenu className="p-2">
            <SidebarMenuItem>
-               <SidebarMenuButton href="/fun" tooltip="Fun Tab">
-                  <Gamepad2 />
-                  <span>Fun Tab</span>
-               </SidebarMenuButton>
+               <Link href="/fun" passHref legacyBehavior>
+                  <SidebarMenuButton tooltip="Fun Tab" onClick={() => setOpenMobile(false)}>
+                     <Gamepad2 />
+                     <span>Fun Tab</span>
+                  </SidebarMenuButton>
+               </Link>
            </SidebarMenuItem>
          </SidebarMenu>
 
