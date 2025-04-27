@@ -26,11 +26,10 @@ const postFormSchema = z.object({
         required_error: "You need to select a post category.",
     }),
     heading: z.string().min(5, { message: 'Heading must be at least 5 characters.' }),
-    subheadings: z.array(z.string()).optional(), // Array of subheadings
-    paragraphs: z.array(z.string()).optional(), // Array of paragraphs
-    // content: z.string().min(50, { message: 'Content must be at least 50 characters.' }),
+    // Ensure these can be strings (from input) or arrays (processed)
+    subheadings: z.union([z.string(), z.array(z.string())]).optional(),
+    paragraphs: z.union([z.string(), z.array(z.string())]).optional(),
     excerpt: z.string().min(10).max(200).optional().or(z.literal('')), // Optional or empty string
-    // imageUrl: z.string().url({ message: 'Please enter a valid URL.' }).optional().or(z.literal('')),
     imageUrl: z.string().optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
 });
@@ -40,12 +39,19 @@ type PostFormInputs = z.infer<typeof postFormSchema>;
 // Helper to fetch post details
 const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
     try {
+        console.log(`[Edit Page] Fetching post details for slug: ${slug}`);
         const response = await fetch(`/api/posts/${slug}`);
         if (!response.ok) {
-            if (response.status === 404) return null;
+            if (response.status === 404) {
+                 console.log(`[Edit Page] Post not found (404) for slug: ${slug}`);
+                 return null;
+             }
+            const errorText = await response.text();
+            console.error(`[Edit Page] Failed to fetch post data: ${response.status} - ${errorText}`);
             throw new Error('Failed to fetch post data');
         }
         const data = await response.json();
+         console.log(`[Edit Page] Post data fetched successfully for ${slug}`);
          // Convert date strings to Date objects before returning
         return {
             ...data,
@@ -57,7 +63,7 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
              } : undefined, // Make sure author is correctly typed or handled if missing
         };
     } catch (error) {
-        console.error("Error fetching post details:", error);
+        console.error(`[Edit Page] Error fetching post details for ${slug}:`, error);
         return null;
     }
 };
@@ -82,8 +88,8 @@ export default function EditPostPage() {
             title: '',
             category: undefined,
             heading: '',
-            subheadings: [],
-            paragraphs: [],
+            subheadings: '', // Initialize as string for input
+            paragraphs: '',   // Initialize as string for textarea
             excerpt: '',
             imageUrl: '',
             tags: '',
@@ -154,9 +160,14 @@ export default function EditPostPage() {
         try {
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
-            // Ensure subheadings and paragraphs are arrays of strings
-            const subheadingsArray = Array.isArray(data.subheadings) ? data.subheadings.filter(s => typeof s === 'string' && s.trim()) : [];
-            const paragraphsArray = Array.isArray(data.paragraphs) ? data.paragraphs.filter(p => typeof p === 'string' && p.trim()) : [];
+            // Process subheadings and paragraphs based on their current type (string from input or array from state)
+            const subheadingsArray = typeof data.subheadings === 'string'
+                ? (data.subheadings.trim() ? data.subheadings.split(',').map(s => s.trim()).filter(s => s) : [])
+                : (Array.isArray(data.subheadings) ? data.subheadings.filter(s => typeof s === 'string' && s.trim()) : []);
+
+            const paragraphsArray = typeof data.paragraphs === 'string'
+                ? (data.paragraphs.trim() ? data.paragraphs.split('\n').map(p => p.trim()).filter(p => p) : [])
+                : (Array.isArray(data.paragraphs) ? data.paragraphs.filter(p => typeof p === 'string' && p.trim()) : []);
 
 
             // Only send fields that are part of the form schema + requestingUserId
@@ -172,6 +183,8 @@ export default function EditPostPage() {
                 requestingUserId: currentUser.id, // Include user ID for API authorization
             };
 
+            console.log(`[Edit Page] Sending update payload for slug ${slug}:`, updatePayload);
+
 
             const response = await fetch(`/api/posts/${slug}`, {
                 method: 'PUT',
@@ -180,6 +193,8 @@ export default function EditPostPage() {
             });
 
             const result = await response.json();
+            console.log(`[Edit Page] API response for update:`, result);
+
 
             if (!response.ok) {
                 throw new Error(result.error || 'Failed to update post');
@@ -294,35 +309,27 @@ export default function EditPostPage() {
 
                         <div>
                             <Label htmlFor="subheadings">Subheadings (Optional, comma-separated)</Label>
-                            <Input id="subheadings"
+                             <Input
+                                id="subheadings"
                                 placeholder="e.g., Introduction, Main Points, Conclusion"
                                 disabled={isSubmitting}
-                                {...register('subheadings', {
-                                    // Convert the input string to an array of strings
-                                     setValueAs: (value) =>
-                                         typeof value === 'string' && value.trim()
-                                             ? value.split(',').map(s => s.trim()).filter(s => s)
-                                             : [], // Return empty array if not a non-empty string
-                                })}
+                                {...register('subheadings')} // Directly register string input
                             />
-                            {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
+                            {/* Validation might need adjustment if error expects array */}
+                            {errors.subheadings && typeof errors.subheadings.message === 'string' && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
                         </div>
 
                         <div>
                             <Label htmlFor="paragraphs">Paragraphs (Optional, separate each with a newline)</Label>
-                            <Textarea id="paragraphs"
+                            <Textarea
+                                id="paragraphs"
                                 rows={5}
                                 placeholder="Write your blog post content here..."
                                 disabled={isSubmitting}
-                                {...register('paragraphs', {
-                                    // Convert the input string (from textarea) to an array of strings
-                                    setValueAs: (value) =>
-                                        typeof value === 'string' && value.trim()
-                                            ? value.split('\n').map(p => p.trim()).filter(p => p)
-                                            : [], // Return empty array if not a non-empty string
-                                })}
+                                {...register('paragraphs')} // Directly register string input
                             />
-                            {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
+                             {/* Validation might need adjustment if error expects array */}
+                            {errors.paragraphs && typeof errors.paragraphs.message === 'string' && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
                         </div>
 
                         <div>

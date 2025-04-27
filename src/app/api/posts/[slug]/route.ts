@@ -12,10 +12,11 @@ export async function GET(
     console.log(`[API GET /api/posts/${slug}] Received request for slug: "${slug}"`); // Added quotes for clarity
 
     try {
+        // Use case-insensitive search in the mock DB
         const postData = await findPostBySlug(slug);
 
         if (!postData) {
-            console.warn(`[API GET /api/posts/${slug}]: findPostBySlug returned null. Post not found.`);
+            console.warn(`[API GET /api/posts/${slug}]: Post not found for slug "${slug}".`);
             return NextResponse.json({ error: 'Post not found' }, { status: 404 });
         }
         console.log(`[API GET /api/posts/${slug}]: Found post: ID ${postData.id}, Title: ${postData.title}`); // Log success

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
         // --- Create post using mock DB function ---
          // Set addUniqueSuffix to false for now to match seeded data slugs if title is the same
-        const createdPost = await createPost(newPostData, false);
+        const createdPost = await createPost(newPostData); // Ensure createPost is awaited
 
         console.log(`[API POST /api/posts] New post created: ${createdPost.id} (Slug: ${createdPost.slug}) by user ${requestingUserId}`);
 
