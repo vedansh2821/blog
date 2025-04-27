@@ -70,6 +70,14 @@ export const getAllUsers = async (requestingUserId: string): Promise<Omit<MockUs
 
 
 export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): Promise<MockUser> => {
+    const existingUser = users.find(u => u.email?.toLowerCase() === userData.email?.toLowerCase());
+    if (existingUser) {
+        console.warn(`[Mock DB] Attempted to create user with existing email: ${userData.email}`);
+        // In a real DB, this might throw a unique constraint error.
+        // For mock, we'll return the existing user or throw an error.
+        throw new Error(`User with email ${userData.email} already exists.`);
+    }
+
     const newUser: MockUser = {
         ...userData,
         id: `user-${userIdCounter++}`, // Use a simple counter for predictable IDs during seeding/dev
@@ -267,19 +275,22 @@ export const createPost = async (
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
-    const lowerCaseSlug = slug?.toLowerCase(); // Handle potential null/undefined slug
-    if (!lowerCaseSlug) {
-        console.warn(`[Mock DB findPostBySlug] Called with invalid slug: ${slug}`);
+    const trimmedSlug = slug?.trim().toLowerCase(); // Trim whitespace and convert to lowercase
+    if (!trimmedSlug) {
+        console.warn(`[Mock DB findPostBySlug] Called with invalid or empty slug: "${slug}"`);
         return null;
     }
-    console.log(`[Mock DB findPostBySlug] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
-    console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
+    console.log(`[Mock DB findPostBySlug] Searching for post with slug (trimmed, case-insensitive): "${trimmedSlug}"`);
+    console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug.trim().toLowerCase()).join(', ')}`);
 
-    // Find post with case-insensitive slug comparison
-    const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
+    // Find post with case-insensitive and trimmed slug comparison
+    const post = posts.find(p => p.slug.trim().toLowerCase() === trimmedSlug);
 
     if (!post) {
-        console.warn(`[Mock DB findPostBySlug] Post with slug "${lowerCaseSlug}" not found.`);
+        console.warn(`[Mock DB findPostBySlug] Post with slug "${trimmedSlug}" not found.`);
+        // Additional logging for debugging
+        const similarSlugs = posts.filter(p => p.slug.toLowerCase().includes(trimmedSlug.substring(0,5))); // Find slugs starting similarly
+        console.log(`[Mock DB findPostBySlug] Similar slugs found: ${similarSlugs.map(p=>p.slug).join(', ') || 'None'}`);
         return null;
     }
 
@@ -376,7 +387,7 @@ export const updatePost = async (
     // Ensure updateData includes potentially partial structured content
     updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'>> & { requestingUserId: string }
 ): Promise<Post | null> => {
-    const lowerCaseSlug = slug?.toLowerCase();
+    const lowerCaseSlug = slug?.trim().toLowerCase(); // Trim whitespace
      if (!lowerCaseSlug) {
         console.warn(`[Mock DB updatePost] Called with invalid slug: ${slug}`);
         return null;
@@ -385,7 +396,7 @@ export const updatePost = async (
     console.log(`[Mock DB updatePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
 
-    const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
+    const postIndex = posts.findIndex(p => p.slug.trim().toLowerCase() === lowerCaseSlug); // Trim during comparison
     if (postIndex === -1) {
         console.error(`[Mock DB updatePost] Post not found for update: ${slug}`);
         return null;
@@ -484,7 +495,7 @@ export const updatePost = async (
 };
 
 export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
-    const lowerCaseSlug = slug?.toLowerCase();
+    const lowerCaseSlug = slug?.trim().toLowerCase(); // Trim whitespace
     if (!lowerCaseSlug) {
         console.warn(`[Mock DB deletePost] Called with invalid slug: ${slug}`);
         return false;
@@ -493,7 +504,7 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
     console.log(`[Mock DB deletePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
 
-    const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
+    const postIndex = posts.findIndex(p => p.slug.trim().toLowerCase() === lowerCaseSlug); // Trim during comparison
     if (postIndex === -1) {
         console.error(`[Mock DB deletePost] Post not found for delete: ${slug}`);
         return false; // Indicate post not found
