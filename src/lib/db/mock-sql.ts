@@ -23,8 +23,14 @@ let userIdCounter = 1;
 export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
     console.log(`[Mock DB] Finding user by email: ${email}`);
     const user = users.find(u => u.email === email);
-    // Ensure joinedAt is returned as a Date object
-    return user ? { ...user, joinedAt: new Date(user.joinedAt) } : null; // Return a copy
+    if (user) {
+         console.log(`[Mock DB] User found for ${email}. Stored Hash: ${user.hashedPassword ? user.hashedPassword.substring(0, 10) + '...' : 'NONE'}`);
+         // Ensure joinedAt is returned as a Date object
+         return { ...user, joinedAt: new Date(user.joinedAt) }; // Return a copy
+     } else {
+         console.log(`[Mock DB] User not found for email: ${email}`);
+         return null;
+     }
 };
 
 export const findUserById = async (id: string): Promise<MockUser | null> => {
@@ -42,7 +48,9 @@ export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): P
         dob: userData.dob || null, // Ensure dob and phone are handled
         phone: userData.phone || null,
     };
-    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}, ID: ${newUser.id}`);
+    // Ensure password hash exists before logging
+    const hashSnippet = newUser.hashedPassword ? newUser.hashedPassword.substring(0, 10) + '...' : 'NONE PROVIDED';
+    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}, ID: ${newUser.id}, Hash: ${hashSnippet}`);
     users.push(newUser);
     // Don't return password hash in the response object sent back typically
     const { hashedPassword, ...userResponse } = newUser;
@@ -108,7 +116,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
         slug: user.id, // Use user ID as author slug for simplicity
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Posts by ${user.name || user.email}`, // Simple bio
-        joinedAt: new Date(user.joinedAt), // Include joinedAt
+        joinedAt: new Date(user.joinedAt), // Include joinedAt Date object
     };
 };
 
@@ -161,7 +169,7 @@ export const createPost = async (
         content: postData.content,
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
         category: postData.category,
-        author: createAuthorObject(author),
+        author: createAuthorObject(author), // Author object now includes Date object for joinedAt
         publishedAt: new Date(),
         updatedAt: new Date(),
         commentCount: 0,
@@ -173,7 +181,8 @@ export const createPost = async (
     };
     console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
-    return { ...newPost }; // Return a copy
+    // Ensure dates are Date objects when returning
+    return { ...newPost, publishedAt: new Date(newPost.publishedAt), updatedAt: new Date(newPost.updatedAt) };
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
@@ -186,7 +195,13 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
 
     // Simulate fetching author details again (or ensure they are always embedded)
     const author = await findUserById(post.author.id);
-    return { ...post, author: createAuthorObject(author) }; // Return copy with fresh author
+    // Ensure dates are Date objects when returning
+    return {
+        ...post,
+        author: createAuthorObject(author),
+        publishedAt: new Date(post.publishedAt),
+        updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+    };
 };
 
 export const findPosts = async (options: {
@@ -229,9 +244,8 @@ export const findPosts = async (options: {
     const postsForPage = filtered.slice(startIndex, endIndex);
     const hasMore = endIndex < totalResults;
 
-    // Ensure author details are up-to-date for the returned page
-    const postsWithAuthors = await Promise.all(postsForPage.map(async (post) => {
-        // Ensure dates are Date objects
+    // Ensure author details and dates are up-to-date for the returned page
+    const postsWithDetails = await Promise.all(postsForPage.map(async (post) => {
         const pubDate = new Date(post.publishedAt);
         const updDate = post.updatedAt ? new Date(post.updatedAt) : undefined;
         const author = await findUserById(post.author.id);
@@ -239,7 +253,7 @@ export const findPosts = async (options: {
     }));
 
     return {
-        posts: postsWithAuthors,
+        posts: postsWithDetails,
         hasMore,
         totalPages,
         currentPage: page,
@@ -285,7 +299,13 @@ export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'i
 
     // Fetch potentially updated author details (name might change etc)
     const author = await findUserById(updatedPost.author.id);
-    return { ...updatedPost, author: createAuthorObject(author) };
+    // Ensure dates are Date objects when returning
+    return {
+        ...updatedPost,
+        author: createAuthorObject(author),
+        publishedAt: new Date(updatedPost.publishedAt),
+        updatedAt: new Date(updatedPost.updatedAt),
+     };
 };
 
 export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
@@ -337,6 +357,7 @@ const seedData = async () => {
            dob: '1990-01-01',
            phone: '123-456-7890',
        });
+       console.log(`[Mock DB] Admin user created: ${adminUser.email}, ID: ${adminUser.id}`);
 
        // Create regular users
        const aayushiPasswordHash = await bcrypt.hash('password123', 10);
@@ -349,6 +370,7 @@ const seedData = async () => {
            dob: '1995-05-15',
            phone: null,
        });
+        console.log(`[Mock DB] User created: ${user1.email}, ID: ${user1.id}`);
 
        const alexPasswordHash = await bcrypt.hash('password456', 10);
        const user2 = await createUser({
@@ -360,6 +382,8 @@ const seedData = async () => {
            dob: null,
            phone: '987-654-3210',
        });
+        console.log(`[Mock DB] User created: ${user2.email}, ID: ${user2.id}`);
+
 
         // Create posts (use addUniqueSuffix: false for seeding to get predictable slugs)
         await createPost({
@@ -424,7 +448,7 @@ const seedData = async () => {
 
 
         console.log("[Mock DB] Seed data creation finished.");
-        console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt})));
+        console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt, hashSet: !!u.hashedPassword })));
         console.log("[Mock DB] Posts:", posts.map(p => ({id: p.id, slug: p.slug, title: p.title})));
 
 
