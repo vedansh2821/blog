@@ -1,5 +1,3 @@
-
-
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -47,9 +45,13 @@ export const findUserById = async (id: string): Promise<MockUser | null> => {
 export const getAllUsers = async (requestingUserId: string): Promise<Omit<MockUser, 'hashedPassword'>[]> => {
     // Authorization check (although simple for mock)
     const requestingUser = await findUserById(requestingUserId);
-    if (!requestingUser || requestingUser.role !== 'admin') {
-        console.warn(`[Mock DB] Unauthorized attempt to get all users by ID: ${requestingUserId}`);
-        // In a real app, throw an error or return empty based on policy
+    if (!requestingUser) {
+        console.warn(`[Mock DB] Unauthorized attempt to get all users by unknown ID: ${requestingUserId}`);
+        throw new Error("Unauthorized: Requesting user not found.");
+    }
+
+    if (requestingUser.role !== 'admin') {
+        console.warn(`[Mock DB] Forbidden: User ${requestingUser.id} (${requestingUser.email}) is not an admin.`);
         throw new Error("Forbidden: Only admins can access the full user list.");
     }
 
@@ -98,8 +100,8 @@ export const updateUser = async (userId: string, updates: { name?: string; dob?:
     const updatedUser: MockUser = {
         ...users[userIndex],
         ...(updates.name !== undefined && { name: updates.name }),
-        ...(updates.dob !== undefined && { dob: updates.dob }),
-        ...(updates.phone !== undefined && { phone: updates.phone }),
+        ...(updates.dob !== undefined && { dob: updates.dob }), // Ensure dob can be null
+        ...(updates.phone !== undefined && { phone: updates.phone }), // Ensure phone can be null
     };
 
     users[userIndex] = updatedUser;
@@ -153,7 +155,8 @@ const createAuthorObject = (user: MockUser | null): Author => {
 const generateSlug = (title: string): string => {
     let baseSlug = title
         .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+        .replace(/&/g, 'and') // Replace '&' with 'and'
+        .replace(/[^\p{L}\p{N}\s-]/gu, '') // Remove special chars except letters, numbers, spaces, hyphens (Unicode safe)
         .replace(/\s+/g, '-')        // Replace spaces with hyphens
         .replace(/-+/g, '-')         // Replace multiple hyphens with single
         .replace(/^-+|-+$/g, '');    // Trim leading/trailing hyphens
@@ -169,17 +172,18 @@ const generateSlug = (title: string): string => {
     // Check if the base slug already exists (case-insensitive)
     // Ensure we check against the *current* list of posts
     while (posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase())) {
+        console.log(`[Mock DB generateSlug] Slug collision detected for "${finalSlug}". Trying next...`);
         finalSlug = `${baseSlug}-${counter}`;
         counter++;
         // Safety break for extreme cases
         if (counter > 100) {
-            console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
+            console.warn(`[Mock DB generateSlug] Slug generation reached limit for base: ${baseSlug}`);
             finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
             break;
         }
     }
 
-    console.log(`[Mock DB] Generated unique slug: "${finalSlug}" for title: "${title}"`);
+    console.log(`[Mock DB generateSlug] Generated unique slug: "${finalSlug}" for title: "${title}"`);
     return finalSlug;
 };
 
@@ -252,6 +256,7 @@ export const createPost = async (
     console.log(`[Mock DB createPost] Finalizing post creation: Title="${newPost.title}", Slug="${newPost.slug}", ID="${newPost.id}", AuthorID="${newPost.author.id}"`);
     posts.push(newPost); // Add to the in-memory array
     console.log(`[Mock DB createPost] Current post count: ${posts.length}`);
+    console.log(`[Mock DB createPost] Current post slugs: ${posts.map(p => p.slug).join(', ')}`);
     // Find the newly added post to ensure it exists before returning
     const addedPost = posts.find(p => p.id === newPost.id);
     if (!addedPost) {
@@ -268,7 +273,6 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB findPostBySlug] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
-    // Log current slugs for debugging
     console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
     // Find post with case-insensitive slug comparison
