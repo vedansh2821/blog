@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -11,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import type { Post } from '@/types/blog'; // Import Post type
 import { useToast } from '@/hooks/use-toast'; // Import useToast
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth/authContext';
+import { PlusCircle } from 'lucide-react';
 
 // Mock categories (can be fetched from API later if dynamic)
 const categories = [
@@ -19,6 +21,7 @@ const categories = [
   { value: 'Lifestyle', label: 'Lifestyle' },
   { value: 'Health', label: 'Health' },
   { value: 'Travel', label: 'Travel' },
+  { value: 'Love', label: 'Love' },
 ];
 
 // API fetching function for blogs page
@@ -87,6 +90,8 @@ export default function BlogsPage() {
   const observer = useRef<IntersectionObserver>();
   const isInitialMount = useRef(true);
   const { toast } = useToast();
+  const router = useRouter();
+  const { currentUser } = useAuth();
 
   const loadPosts = useCallback(async (pageNum: number, category: string, pagination: boolean, append: boolean = false) => {
      if (!append) {
@@ -287,6 +292,14 @@ export default function BlogsPage() {
     <div className="container mx-auto py-8">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
         <h1 className="text-3xl font-bold">All Blog Posts</h1>
+         {currentUser && (
+             <Button asChild>
+               <Link href="/admin/create-post">
+                   <PlusCircle className="mr-2 h-4 w-4" />
+                    Create New Post
+               </Link>
+             </Button>
+          )}
         <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
            <Select value={selectedCategory} onValueChange={handleCategoryChange}>
             <SelectTrigger className="w-[180px]">
@@ -373,3 +386,4 @@ export default function BlogsPage() {
     </div>
   );
 }
+
