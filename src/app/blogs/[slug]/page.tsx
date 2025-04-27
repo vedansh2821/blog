@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, Share2, Facebook, Twitter, Linkedin, Eye, Edit, Trash2 } from 'lucide-react'; // Added Edit, Trash2 icons
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import BlogPostCard from '@/components/blog-post-card'; // Re-use for related posts
 import {
    DropdownMenu,
@@ -54,8 +54,8 @@ const fetchPostDetails = async (slug: string): Promise<Post | null> => {
           throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
       const data: Post = await response.json();
-       // Convert date strings to Date objects
-       data.publishedAt = new Date(data.publishedAt);
+       // Convert date strings to Date objects safely
+       if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
        if (data.updatedAt) data.updatedAt = new Date(data.updatedAt);
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, data);
       return data;
@@ -68,47 +68,62 @@ const fetchPostDetails = async (slug: string): Promise<Post | null> => {
 
 const fetchComments = async (postId: string): Promise<Comment[]> => {
   // Replace with API call: /api/comments?postId=...
-  await new Promise(resolve => setTimeout(resolve, 400));
-  const numComments = Math.floor(Math.random() * 5) + 1;
-  return Array.from({length: numComments}).map((_, i) => ({
-      id: `comment-${postId}-${i}`,
-      author: { name: `User ${i+1}`, avatarUrl: `https://i.pravatar.cc/40?u=commenter${i}`},
-      timestamp: new Date(Date.now() - Math.random() * 5 * 24 * 60 * 60 * 1000),
-      content: `This is comment number ${i+1}. I ${Math.random() > 0.5 ? 'agree' : 'disagree'} with the points made.`,
-      replies: i % 2 === 0 ? Array.from({length: Math.floor(Math.random()*2)+1}).map((_, j) => ({
-           id: `reply-${postId}-${i}-${j}`,
-           author: { name: `Replier ${j+1}`, avatarUrl: `https://i.pravatar.cc/40?u=replier${j}`},
-           timestamp: new Date(Date.now() - Math.random() * 1 * 24 * 60 * 60 * 1000),
-           content: `Replying to comment ${i+1}. My thoughts are...`,
-           replies: [],
-           likes: Math.floor(Math.random() * 5),
-      })) : [],
-      likes: Math.floor(Math.random() * 20),
-  })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+   try {
+       const response = await fetch(`/api/comments?postId=${postId}`);
+       if (!response.ok) {
+           throw new Error(`API Error: ${response.status} ${response.statusText}`);
+       }
+       const data: Comment[] = await response.json();
+       // Convert timestamps
+       return data.map(comment => ({
+            ...comment,
+            timestamp: new Date(comment.timestamp),
+            replies: (comment.replies || []).map(reply => ({
+                ...reply,
+                timestamp: new Date(reply.timestamp),
+            }))
+       })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+   } catch (error) {
+       console.error(`[fetchComments] Error fetching comments for post ${postId}:`, error);
+       return []; // Return empty array on error
+   }
 };
 
 const fetchRelatedPosts = async (category: string, currentPostId: string): Promise<RelatedPost[]> => {
-  // Replace with API call: /api/posts?category=...&limit=3&excludeId=...
-  await new Promise(resolve => setTimeout(resolve, 600));
-  const allPosts = Array.from({ length: 10 }).map((_, index) => ({
-      id: `post-${index+50}`,
-      title: `Related Post ${index + 1} on ${category}`,
-      slug: `related-post-${index + 1}-${category.toLowerCase()}`,
-      excerpt: `An excerpt for a related post about ${category}.`,
-      imageUrl: `https://picsum.photos/seed/related${index + 1}/600/400`,
-      category: category,
-      author: { id: `author-rel-${index}`, name: 'Related Author', avatarUrl: 'https://i.pravatar.cc/40?u=related', slug: `author-rel-${index}` },
-      publishedAt: new Date(Date.now() - (index+50) * 24 * 60 * 60 * 1000),
-      commentCount: Math.floor(Math.random() * 10),
-      // Make sure it matches RelatedPost type
-      content: '', // Add missing fields if needed
-      tags: [],
-      views: 0,
-    }));
+   // Replace with API call: /api/posts?category=...&limit=3&excludeId=...
+   try {
+       const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=3&excludeId=${currentPostId}`);
+       if (!response.ok) {
+           throw new Error(`API Error: ${response.status} ${response.statusText}`);
+       }
+       const data: { posts: Post[] } = await response.json(); // API returns { posts: [...] } structure
 
-   return allPosts
-      .filter(p => p.category === category && p.id !== currentPostId)
-      .slice(0, 3) as RelatedPost[]; // Cast might be needed depending on full type defs
+       // Ensure data.posts is an array before mapping
+       const posts = Array.isArray(data.posts) ? data.posts : [];
+
+       // Map to RelatedPost type, converting dates
+       return posts
+           .map(p => ({
+               id: p.id,
+               title: p.title,
+               slug: p.slug,
+               excerpt: p.excerpt,
+               imageUrl: p.imageUrl,
+               category: p.category,
+               author: { // Map only necessary author fields
+                   id: p.author.id,
+                   name: p.author.name,
+                   avatarUrl: p.author.avatarUrl,
+                   slug: p.author.slug,
+               },
+               publishedAt: new Date(p.publishedAt), // Convert date
+               commentCount: p.commentCount,
+           })) as RelatedPost[]; // Assert type if confident in mapping
+
+   } catch (error) {
+       console.error(`[fetchRelatedPosts] Error fetching related posts for category ${category}:`, error);
+       return []; // Return empty array on error
+   }
 }
 
 // --- Components ---
@@ -133,37 +148,69 @@ const PostSkeleton: React.FC = () => (
   </div>
 );
 
-const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment) => void, replyTo?: string }> = ({ postId, onCommentSubmit, replyTo }) => {
+const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment) => void, replyTo?: string | null }> = ({ postId, onCommentSubmit, replyTo }) => {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const { currentUser } = useAuth(); // Get current user
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim()) return;
-
-    setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const newComment: Comment = {
-      id: `new-${Date.now()}`,
-       postId: postId, // Added postId
-      author: { id:'currentuser', name: 'You', avatarUrl: 'https://i.pravatar.cc/40?u=currentuser', slug:'currentuser' }, // Replace with actual user
-      timestamp: new Date(),
-      content: content,
-      replies: [],
-      likes: 0,
+    if (!content.trim() || !currentUser) {
+        if (!currentUser) {
+            toast({ title: "Login Required", description: "Please log in to comment.", variant: "destructive" });
+        }
+        return;
     };
 
-    // In a real app, send to API: await postComment(postId, content, replyTo);
-    onCommentSubmit(newComment); // Update UI optimistically or after API success
-    setContent('');
-    setIsSubmitting(false);
-    toast({
-        title: replyTo ? "Reply posted!" : "Comment posted!",
-        description: "Your thoughts have been added.",
-    });
+    setIsSubmitting(true);
+
+    const commentData = {
+        postId: postId,
+        content: content,
+        replyTo: replyTo || undefined, // Send undefined if null
+        author: { // Send necessary author info
+             id: currentUser.id,
+             name: currentUser.name,
+             avatarUrl: currentUser.photoURL,
+             slug: currentUser.id // Assuming slug is ID for author links
+         }
+    };
+
+
+    try {
+         const response = await fetch('/api/comments', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify(commentData),
+         });
+
+         if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || `Failed to post comment: ${response.statusText}`);
+          }
+
+          const newComment: Comment = await response.json();
+          // Convert timestamp back to Date object after receiving from API
+          newComment.timestamp = new Date(newComment.timestamp);
+
+          onCommentSubmit(newComment); // Update UI optimistically or after API success
+          setContent('');
+          toast({
+              title: replyTo ? "Reply posted!" : "Comment posted!",
+              description: "Your thoughts have been added.",
+          });
+
+      } catch (error) {
+         console.error("Error posting comment:", error);
+         toast({
+              title: "Error",
+              description: error instanceof Error ? error.message : "Could not post comment.",
+              variant: "destructive",
+          });
+      } finally {
+         setIsSubmitting(false);
+      }
   };
 
   return (
@@ -179,12 +226,13 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
         className="mb-2"
         rows={3}
         required
-        disabled={isSubmitting}
+        disabled={isSubmitting || !currentUser} // Disable if not logged in
       />
-      <Button type="submit" disabled={isSubmitting || !content.trim()}>
+      <Button type="submit" disabled={isSubmitting || !content.trim() || !currentUser}>
         <Send className="mr-2 h-4 w-4" />
         {isSubmitting ? 'Posting...' : (replyTo ? 'Post Reply' : 'Post Comment')}
       </Button>
+       {!currentUser && <p className="text-xs text-muted-foreground mt-2">Please <Link href="/login" className="underline">log in</Link> to comment.</p>}
     </form>
   );
 };
@@ -194,20 +242,31 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
     const [likes, setLikes] = useState(comment.likes || 0);
 
     const handleLike = () => {
-        // In real app, send like update to API
+        // TODO: In real app, send like update to API (e.g., PUT /api/comments/{comment.id}/like)
         setLikes(prev => prev + 1); // Optimistic update
     }
 
+     const commentTimestamp = comment.timestamp instanceof Date ? comment.timestamp : new Date(comment.timestamp);
+
+
     return (
     <div className="flex gap-4 py-4">
-      <Avatar className="h-10 w-10 mt-1">
-        <AvatarImage src={comment.author.avatarUrl} alt={comment.author.name} />
-        <AvatarFallback>{comment.author.name?.charAt(0) || '?'}</AvatarFallback>
-      </Avatar>
+       {/* Link author avatar/name to author page */}
+       <Link href={`/authors/${comment.author.slug || comment.author.id}`} passHref>
+           <Avatar className="h-10 w-10 mt-1 cursor-pointer">
+              <AvatarImage src={comment.author.avatarUrl || undefined} alt={comment.author.name || 'User'} />
+              <AvatarFallback>{comment.author.name?.charAt(0)?.toUpperCase() || '?'}</AvatarFallback>
+           </Avatar>
+       </Link>
       <div className="flex-1">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold text-sm">{comment.author.name || 'Anonymous'}</span>
-          <time className="text-xs text-muted-foreground">{format(new Date(comment.timestamp), 'MMM d, yyyy HH:mm')}</time>
+            <Link href={`/authors/${comment.author.slug || comment.author.id}`} passHref>
+               <span className="font-semibold text-sm hover:text-primary transition-colors cursor-pointer">{comment.author.name || 'Anonymous'}</span>
+           </Link>
+           {/* Ensure timestamp is valid before formatting */}
+           <time className="text-xs text-muted-foreground">
+              {isValid(commentTimestamp) ? format(commentTimestamp, 'MMM d, yyyy HH:mm') : 'Invalid Date'}
+           </time>
         </div>
         <p className="text-sm mb-2">{comment.content}</p>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -264,6 +323,7 @@ export default function BlogPostPage() {
       setRelatedPosts([]);
       try {
         const postData = await fetchPostDetails(slug);
+
         if (postData) {
            setPost(postData);
            // Only fetch comments and related posts if post exists
@@ -274,14 +334,10 @@ export default function BlogPostPage() {
            setComments(commentsData);
            setRelatedPosts(relatedPostsData);
         } else {
-           console.error(`Post not found for slug: ${slug}`);
-           toast({
-               title: "Post Not Found",
-               description: "The requested blog post could not be found.",
-               variant: "destructive",
-           });
-           // Optional: Redirect to 404 or blogs page
-           // router.push('/not-found');
+           console.error(`Post not found for slug: ${slug}`); // Log error instead of toast here
+           // Let the component render the "not found" message below
+           // Optional: Redirect to 404 or blogs page after a delay?
+           // setTimeout(() => router.push('/not-found'), 1000);
         }
       } catch (error) {
         console.error("Failed to load post data:", error);
@@ -333,21 +389,26 @@ export default function BlogPostPage() {
    const handleRatePost = async (rating: number) => {
         if (!post) return;
         console.log(`Rating post ${post.id} with ${rating} stars`);
+        // TODO: API call to submit rating PUT /api/posts/{slug}/rate
         toast({
           title: "Rating Submitted",
-          description: `You rated this post ${rating} stars.`,
+          description: `You rated this post ${rating} stars. (Feature WIP)`,
         });
          setPost(prevPost => {
             if (!prevPost) return null;
             const currentRating = prevPost.rating ?? 0;
-            const newAvgRating = (currentRating + rating) / 2; // Simple avg for mock
+             const currentVotes = prevPost.views ?? 1; // Use views as proxy for votes count
+             const newTotalRating = (currentRating * (currentVotes -1) ) + rating;
+             const newAvgRating = newTotalRating / currentVotes;
+             // Simplistic update for demo
+            // const newAvgRating = (currentRating + rating) / 2; // Simple avg for mock
             return {...prevPost, rating: parseFloat(newAvgRating.toFixed(1))}
          });
     };
 
     // --- Edit and Delete Handlers ---
     const handleEdit = () => {
-         if (!canEditOrDelete) return;
+         if (!canEditOrDelete || !post) return;
          // TODO: Implement navigation to an edit page or open an edit modal
          console.log("Edit button clicked for post:", post?.slug);
          toast({ title: "Edit Functionality", description: "Redirecting to edit page (not implemented yet)." });
@@ -361,14 +422,22 @@ export default function BlogPostPage() {
 
          try {
              // --- Make API Call to DELETE endpoint ---
-             // Replace with actual fetch using user's token if needed for auth
+             // Pass necessary headers (like Auth if using JWT, or rely on cookies)
+              // For mock auth, include the user ID in a header if needed by getUserFromRequest
+              const headers: HeadersInit = {
+                  'Content-Type': 'application/json', // Not strictly needed for DELETE but good practice
+              };
+              if (currentUser) {
+                  headers['X-Mock-User-ID'] = currentUser.id; // Send mock user ID
+              }
+
              const response = await fetch(`/api/posts/${post.slug}`, {
                  method: 'DELETE',
-                 // Add headers if needed (e.g., Authorization: `Bearer ${token}`)
+                 headers: headers,
              });
 
              if (!response.ok) {
-                 const errorData = await response.json();
+                 const errorData = await response.json().catch(() => ({ error: `Server returned ${response.status}` })); // Handle non-JSON errors
                  throw new Error(errorData.error || `Failed to delete post: ${response.statusText}`);
              }
 
@@ -397,11 +466,24 @@ export default function BlogPostPage() {
   }
 
   if (!post) {
-     return <div className="container mx-auto py-8 text-center text-muted-foreground">Post not found or failed to load.</div>;
+     // Show a user-friendly message if the post wasn't found after loading
+     return (
+        <div className="container mx-auto py-16 text-center">
+           <h1 className="text-2xl font-semibold mb-4">Post Not Found</h1>
+           <p className="text-muted-foreground mb-6">
+              Sorry, we couldn't find the blog post you were looking for.
+            </p>
+           <Button asChild>
+              <Link href="/blogs">
+                 <CornerUpLeft className="mr-2 h-4 w-4" /> Back to Blogs
+              </Link>
+           </Button>
+        </div>
+      );
   }
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const shareTitle = post.title;
+   const publishedDate = post.publishedAt instanceof Date ? post.publishedAt : new Date(post.publishedAt);
+   const postAuthor = post.author || {}; // Handle potentially missing author
 
 
   return (
@@ -412,18 +494,22 @@ export default function BlogPostPage() {
            <h1 className="text-4xl font-bold tracking-tight mb-4">{post.title}</h1>
            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
              {/* Author Link */}
-             <Link href={`/authors/${post.author.slug}`} className="flex items-center gap-2 hover:text-primary transition-colors">
-               <Avatar className="h-8 w-8">
-                 <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
-                 <AvatarFallback>{post.author.name?.charAt(0) || 'A'}</AvatarFallback>
-               </Avatar>
-               <span>By {post.author.name || 'Unknown Author'}</span>
-             </Link>
+              {postAuthor.id && (
+                 <Link href={`/authors/${postAuthor.slug || postAuthor.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
+                   <Avatar className="h-8 w-8">
+                     <AvatarImage src={postAuthor.avatarUrl || undefined} alt={postAuthor.name || 'Author'} />
+                     <AvatarFallback>{postAuthor.name?.charAt(0)?.toUpperCase() || 'A'}</AvatarFallback>
+                   </Avatar>
+                   <span>By {postAuthor.name || 'Unknown Author'}</span>
+                 </Link>
+              )}
              {/* Meta Info */}
-             <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={new Date(post.publishedAt).toISOString()}>{format(new Date(post.publishedAt), 'MMMM d, yyyy')}</time> </div>
+             {isValid(publishedDate) && (
+                <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={publishedDate.toISOString()}>{format(publishedDate, 'MMMM d, yyyy')}</time> </div>
+             )}
              <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{post.commentCount} Comments</span> </div>
              {post.rating != null && <div className="flex items-center gap-1"> <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> <span>{post.rating.toFixed(1)}</span> </div> }
-             {post.views != null && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{post.views} Views</span> </div> }
+             {post.views != null && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{post.views.toLocaleString()} Views</span> </div> }
            </div>
 
             {/* Edit/Delete Buttons - Conditionally Rendered */}
@@ -465,7 +551,7 @@ export default function BlogPostPage() {
                src={post.imageUrl}
                alt={post.title}
                fill
-               priority
+               priority // Prioritize loading main image
                sizes="(max-width: 768px) 100vw, 896px"
                className="object-cover"
              />
@@ -473,7 +559,7 @@ export default function BlogPostPage() {
 
           <div
              className="prose prose-quoteless prose-neutral dark:prose-invert max-w-none"
-             dangerouslySetInnerHTML={{ __html: post.content }}
+             dangerouslySetInnerHTML={{ __html: post.content }} // Ensure content is properly sanitized on the backend or when fetched
            />
 
             {post.tags && post.tags.length > 0 && (
@@ -481,7 +567,10 @@ export default function BlogPostPage() {
                  <span className="font-semibold mr-2">Tags:</span>
                  {post.tags.map(tag => (
                      <Badge key={tag} variant="outline" className="cursor-pointer hover:bg-accent">
-                       <Link href={`/tags/${tag}`}>{tag}</Link>
+                       {/* TODO: Link to tag archive page if implemented */}
+                       {/* <Link href={`/tags/${tag}`}> */}
+                       {tag}
+                       {/* </Link> */}
                       </Badge>
                    ))}
               </div>
@@ -499,29 +588,32 @@ export default function BlogPostPage() {
            </div>
 
           {/* Author Box */}
-           <Card className="mt-12 mb-8 bg-secondary/50">
-             <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
-               <Link href={`/authors/${post.author.slug}`}>
-                 <Avatar className="h-20 w-20">
-                   <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
-                   <AvatarFallback>{post.author.name?.substring(0, 2) || 'AU'}</AvatarFallback>
-                 </Avatar>
-               </Link>
-               <div className="text-center sm:text-left">
-                 <Link href={`/authors/${post.author.slug}`}>
-                   <h4 className="text-lg font-semibold hover:text-primary transition-colors">{post.author.name}</h4>
-                 </Link>
-                 <p className="text-sm text-muted-foreground mt-1 mb-2">{post.author.bio || 'Author bio not available.'}</p>
-                 {/* Assuming social links are part of Author type, conditionally render */}
-                 {/* {post.author.socialLinks && ( ... )} */}
-               </div>
-             </CardContent>
-           </Card>
+          {postAuthor.id && (
+               <Card className="mt-12 mb-8 bg-secondary/50">
+                 <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
+                    <Link href={`/authors/${postAuthor.slug || postAuthor.id}`}>
+                     <Avatar className="h-20 w-20">
+                       <AvatarImage src={postAuthor.avatarUrl || undefined} alt={postAuthor.name || 'Author'} />
+                       <AvatarFallback>{postAuthor.name?.substring(0, 2)?.toUpperCase() || 'AU'}</AvatarFallback>
+                     </Avatar>
+                   </Link>
+                   <div className="text-center sm:text-left">
+                     <Link href={`/authors/${postAuthor.slug || postAuthor.id}`}>
+                       <h4 className="text-lg font-semibold hover:text-primary transition-colors">{postAuthor.name}</h4>
+                     </Link>
+                     <p className="text-sm text-muted-foreground mt-1 mb-2">{postAuthor.bio || 'Author bio not available.'}</p>
+                     {/* TODO: Conditionally render social links if available */}
+                     {/* {postAuthor.socialLinks && ( ... )} */}
+                   </div>
+                 </CardContent>
+               </Card>
+            )}
 
            <div className="mt-8 mb-12 p-6 rounded-lg bg-card border text-center">
                <h3 className="text-xl font-semibold mb-3">Enjoyed this post?</h3>
                <p className="text-muted-foreground mb-4">Share it with your friends or subscribe for more content!</p>
                <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
+                 {/* TODO: Implement Newsletter Subscription */}
                  <Button>Subscribe to Newsletter</Button>
                   <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -530,9 +622,9 @@ export default function BlogPostPage() {
                          </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="center">
-                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Facebook </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Twitter </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> LinkedIn </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Facebook </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(post.title)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Twitter </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(window.location.href)}&title=${encodeURIComponent(post.title)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> LinkedIn </DropdownMenuItem>
                        </DropdownMenuContent>
                     </DropdownMenu>
                </div>
@@ -545,7 +637,7 @@ export default function BlogPostPage() {
                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {relatedPosts.map((relatedPost) => (
                       // Cast relatedPost to the type expected by BlogPostCard if necessary
-                      <BlogPostCard key={relatedPost.id} post={relatedPost as any} />
+                       <BlogPostCard key={relatedPost.id} post={relatedPost as any} />
                     ))}
                 </div>
              </section>
@@ -553,10 +645,10 @@ export default function BlogPostPage() {
 
        <section id="comment-section" className="mt-16 max-w-3xl mx-auto">
          <h2 className="text-2xl font-bold mb-6">{post.commentCount} Comments</h2>
-         <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo || undefined}/>
+         <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo}/>
           {replyingTo && (
                 <div className="mb-4 p-2 bg-accent/50 rounded-md text-sm flex justify-between items-center">
-                    <span>Replying to comment ID: {replyingTo}</span>
+                    <span>Replying to comment...</span> {/* Simplified message */}
                      <Button variant="ghost" size="sm" className="h-auto p-1" onClick={() => setReplyingTo(null)}>Cancel Reply</Button>
                 </div>
            )}
@@ -566,7 +658,8 @@ export default function BlogPostPage() {
               comments.map(comment => (
                  <React.Fragment key={comment.id}>
                     <CommentItem comment={comment} postId={post.id} onReply={handleStartReply} />
-                    <Separator className="last:hidden" />
+                    {/* Avoid rendering separator after the last comment */}
+                    {comment !== comments[comments.length - 1] && <Separator />}
                 </React.Fragment>
             ))
            ) : (
@@ -577,3 +670,5 @@ export default function BlogPostPage() {
     </div>
   );
 }
+
+    
