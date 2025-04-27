@@ -3,15 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Menu, X, Search, Sun, Moon, Code2, LogIn, LogOut, UserPlus, User } from 'lucide-react'; // Added auth icons
+import { Menu, X, Search, Sun, Moon, Code2, LogIn, LogOut, UserPlus, User, ChevronDown } from 'lucide-react'; // Added ChevronDown
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { useTheme } from '@/hooks/use-theme';
 import { cn } from '@/lib/utils';
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useAuth } from '@/lib/auth/authContext'; // Import useAuth
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar components
+import { useAuth } from '@/lib/auth/authContext';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
    DropdownMenu,
    DropdownMenuContent,
@@ -19,15 +19,29 @@ import {
    DropdownMenuLabel,
    DropdownMenuSeparator,
    DropdownMenuTrigger,
+   DropdownMenuGroup, // Added DropdownMenuGroup
  } from "@/components/ui/dropdown-menu"
+ import { useToast } from '@/hooks/use-toast'; // Import useToast
+ import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 
 const navItems = [
   { name: 'Home', href: '/' },
-  { name: 'Blogs', href: '/blogs' },
+  // { name: 'Blogs', href: '/blogs' }, // Replaced by dropdown
   { name: 'About', href: '/about' },
   { name: 'Contact', href: '/contact' },
 ];
+
+// Mock categories for dropdown (fetch from API if needed)
+const blogCategories = [
+  { name: 'Technology', slug: 'Technology' },
+  { name: 'Lifestyle', slug: 'Lifestyle' },
+  { name: 'Health', slug: 'Health' },
+  { name: 'Travel', slug: 'Travel' },
+  { name: 'Love', slug: 'Love' },
+  { name: 'Others', slug: 'Others' },
+];
+
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -36,7 +50,8 @@ export default function Header() {
   const [mounted, setMounted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();
-  const { currentUser, logout, loading } = useAuth(); // Get auth state and functions
+  const { currentUser, logout, loading } = useAuth();
+  const { toast } = useToast(); // Initialize toast
 
   useEffect(() => {
     setMounted(true);
@@ -102,7 +117,15 @@ export default function Header() {
                  <DropdownMenuItem asChild className="cursor-pointer">
                     <Link href="/profile"><User className="mr-2 h-4 w-4" /> Profile</Link>
                  </DropdownMenuItem>
-                 {/* Add other items like Settings, Dashboard if needed */}
+                  {/* Add Admin Dashboard link conditionally */}
+                 {currentUser.role === 'admin' && (
+                   <DropdownMenuItem asChild className="cursor-pointer">
+                     <Link href="/admin/dashboard">
+                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2 h-4 w-4"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                       Admin Dashboard
+                     </Link>
+                   </DropdownMenuItem>
+                 )}
                  <DropdownMenuSeparator />
                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
                     <LogOut className="mr-2 h-4 w-4" />
@@ -174,6 +197,28 @@ export default function Header() {
               {item.name}
             </Link>
           ))}
+           {/* Blog Categories Dropdown */}
+           <DropdownMenu>
+             <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors h-auto p-0">
+                  Blogs <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+             </DropdownMenuTrigger>
+             <DropdownMenuContent>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem asChild className="cursor-pointer">
+                    <Link href="/blogs">All Posts</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Categories</DropdownMenuLabel>
+                   {blogCategories.map((category) => (
+                      <DropdownMenuItem key={category.slug} asChild className="cursor-pointer">
+                        <Link href={`/blogs?category=${category.slug}`}>{category.name}</Link>
+                      </DropdownMenuItem>
+                   ))}
+                 </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-4"> {/* Reduced gap slightly */}
@@ -198,7 +243,7 @@ export default function Header() {
           </Button>
 
           {/* Authentication Buttons */}
-          <AuthButtons />
+          {mounted && <AuthButtons />} {/* Render AuthButtons only when mounted */}
 
 
           {/* Mobile Menu Button for Sheet */}
@@ -222,6 +267,11 @@ export default function Header() {
                          {item.name}
                        </Link>
                      ))}
+                     {/* Mobile Blogs Link */}
+                      <Link href="/blogs" onClick={closeMobileMenu} className="text-lg font-medium text-foreground hover:text-primary transition-colors">
+                          Blogs
+                      </Link>
+                      {/* TODO: Add mobile categories accordion or similar */}
                    </nav>
                    {/* Mobile Search and Auth */}
                    <div className="border-t p-4 space-y-4">
@@ -231,7 +281,7 @@ export default function Header() {
                           <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-0 border-none bg-transparent cursor-pointer"> <Search className="h-4 w-4 text-muted-foreground" /> </button>
                       </form>
                        {/* Mobile Auth Buttons */}
-                       <MobileAuthButtons />
+                       {mounted && <MobileAuthButtons />}
                    </div>
               </SheetContent>
            </Sheet>
@@ -241,3 +291,4 @@ export default function Header() {
     </header>
   );
 }
+
