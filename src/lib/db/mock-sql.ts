@@ -274,37 +274,37 @@ export const createPost = async (
     return { ...addedPost, publishedAt: new Date(addedPost.publishedAt), updatedAt: new Date(addedPost.updatedAt) };
 };
 
+
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
-    const trimmedSlug = slug?.trim().toLowerCase(); // Trim whitespace and convert to lowercase
+    const trimmedSlug = slug?.trim().toLowerCase();
     if (!trimmedSlug) {
         console.warn(`[Mock DB findPostBySlug] Called with invalid or empty slug: "${slug}"`);
         return null;
     }
     console.log(`[Mock DB findPostBySlug] Searching for post with slug (trimmed, case-insensitive): "${trimmedSlug}"`);
-    console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug.trim().toLowerCase()).join(', ')}`);
+    console.log(`[Mock DB findPostBySlug] Total posts in DB: ${posts.length}`);
+    const allSlugs = posts.map(p => p.slug.trim().toLowerCase()).join(', ');
+    console.log(`[Mock DB findPostBySlug] Available slugs: ${allSlugs}`);
 
-    // Find post with case-insensitive and trimmed slug comparison
     const post = posts.find(p => p.slug.trim().toLowerCase() === trimmedSlug);
 
     if (!post) {
         console.warn(`[Mock DB findPostBySlug] Post with slug "${trimmedSlug}" not found.`);
-        // Additional logging for debugging
-        const similarSlugs = posts.filter(p => p.slug.toLowerCase().includes(trimmedSlug.substring(0,5))); // Find slugs starting similarly
-        console.log(`[Mock DB findPostBySlug] Similar slugs found: ${similarSlugs.map(p=>p.slug).join(', ') || 'None'}`);
+        const postById = posts.find(p => p.id === slug); // Check if maybe ID was passed
+        if (postById) {
+             console.warn(`[Mock DB findPostBySlug] However, found post by ID "${slug}": Title: "${postById.title}" (Slug: "${postById.slug}")`);
+        }
         return null;
     }
 
     console.log(`[Mock DB findPostBySlug] Found post: ID ${post.id}, Title: "${post.title}" for slug: "${slug}"`);
 
-    // Simulate fetching author details again (important for up-to-date info)
     const author = await findUserById(post.author.id);
     if (!author) {
         console.warn(`[Mock DB findPostBySlug] Author with ID ${post.author.id} not found for post ${post.id}`);
-        // Decide how to handle - return post with unknown author or null?
-        // Returning with unknown author for now.
-         return {
+        return {
             ...post,
-            author: createAuthorObject(null), // Use unknown author
+            author: createAuthorObject(null),
             publishedAt: new Date(post.publishedAt),
             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
         };
