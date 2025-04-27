@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation'; // Import useRouter
 import Image from 'next/image';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, Share2, Facebook, Twitter, Linkedin, Eye, Edit, Trash2 } from 'lucide-react'; // Added Edit, Trash2 icons
-import { format, isValid } from 'date-fns';
+import { format } from 'date-fns';
 import BlogPostCard from '@/components/blog-post-card'; // Re-use for related posts
 import {
    DropdownMenu,
@@ -54,7 +54,7 @@ const fetchPostDetails = async (slug: string): Promise<Post | null> => {
           throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
       const data: Post = await response.json();
-       // Convert date strings to Date objects safely
+       // Convert date strings to Date objects
        if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
        if (data.updatedAt) data.updatedAt = new Date(data.updatedAt);
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, data);
@@ -67,63 +67,61 @@ const fetchPostDetails = async (slug: string): Promise<Post | null> => {
 
 
 const fetchComments = async (postId: string): Promise<Comment[]> => {
-  // Replace with API call: /api/comments?postId=...
-   try {
-       const response = await fetch(`/api/comments?postId=${postId}`);
-       if (!response.ok) {
-           throw new Error(`API Error: ${response.status} ${response.statusText}`);
-       }
-       const data: Comment[] = await response.json();
-       // Convert timestamps
-       return data.map(comment => ({
-            ...comment,
-            timestamp: new Date(comment.timestamp),
-            replies: (comment.replies || []).map(reply => ({
-                ...reply,
-                timestamp: new Date(reply.timestamp),
-            }))
-       })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-   } catch (error) {
-       console.error(`[fetchComments] Error fetching comments for post ${postId}:`, error);
-       return []; // Return empty array on error
-   }
+  console.log(`[fetchComments] Fetching comments for postId: ${postId}`);
+    try {
+        const response = await fetch(`/api/comments?postId=${postId}`);
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+        const commentsData: Comment[] = await response.json();
+        // Convert timestamp strings to Date objects
+        const parseTimestamps = (comments: Comment[]): Comment[] => {
+             return comments.map(comment => ({
+                ...comment,
+                timestamp: new Date(comment.timestamp),
+                replies: comment.replies ? parseTimestamps(comment.replies) : [],
+            }));
+        }
+        return parseTimestamps(commentsData);
+    } catch (error) {
+        console.error(`[fetchComments] Error fetching comments for ${postId}:`, error);
+        return []; // Return empty array on error
+    }
 };
 
-const fetchRelatedPosts = async (category: string, currentPostId: string): Promise<RelatedPost[]> => {
-   // Replace with API call: /api/posts?category=...&limit=3&excludeId=...
-   try {
-       const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=3&excludeId=${currentPostId}`);
-       if (!response.ok) {
-           throw new Error(`API Error: ${response.status} ${response.statusText}`);
-       }
-       const data: { posts: Post[] } = await response.json(); // API returns { posts: [...] } structure
+const fetchRelatedPosts = async (category: string, currentPostSlug: string): Promise<RelatedPost[]> => {
+  console.log(`[fetchRelatedPosts] Fetching related posts for category: ${category}, excluding: ${currentPostSlug}`);
+    try {
+        // Fetch posts from the same category, limit to a few more than needed (e.g., 4)
+        // Filtering out the current post will happen client-side
+        const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=4`);
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+        const data: { posts: Post[] } = await response.json(); // Assuming API returns { posts: [...] }
 
-       // Ensure data.posts is an array before mapping
-       const posts = Array.isArray(data.posts) ? data.posts : [];
+        // Filter out the current post and take the first 3
+        const related = data.posts
+            .filter(post => post.slug !== currentPostSlug)
+            .slice(0, 3)
+             // Map to RelatedPost structure if necessary (might already match)
+             .map(post => ({
+                 ...post,
+                  author: { // Ensure only basic author info is included if needed by RelatedPost type
+                      id: post.author.id,
+                      name: post.author.name,
+                      slug: post.author.slug,
+                      avatarUrl: post.author.avatarUrl,
+                  }
+             }));
 
-       // Map to RelatedPost type, converting dates
-       return posts
-           .map(p => ({
-               id: p.id,
-               title: p.title,
-               slug: p.slug,
-               excerpt: p.excerpt,
-               imageUrl: p.imageUrl,
-               category: p.category,
-               author: { // Map only necessary author fields
-                   id: p.author.id,
-                   name: p.author.name,
-                   avatarUrl: p.author.avatarUrl,
-                   slug: p.author.slug,
-               },
-               publishedAt: new Date(p.publishedAt), // Convert date
-               commentCount: p.commentCount,
-           })) as RelatedPost[]; // Assert type if confident in mapping
+         console.log(`[fetchRelatedPosts] Found ${related.length} related posts.`);
+         return related as RelatedPost[]; // Cast if necessary after mapping
 
-   } catch (error) {
-       console.error(`[fetchRelatedPosts] Error fetching related posts for category ${category}:`, error);
-       return []; // Return empty array on error
-   }
+    } catch (error) {
+         console.error(`[fetchRelatedPosts] Error fetching related posts for category ${category}:`, error);
+         return []; // Return empty array on error
+    }
 }
 
 // --- Components ---
@@ -145,6 +143,42 @@ const PostSkeleton: React.FC = () => (
        <Skeleton className="h-6 w-full" />
        <Skeleton className="h-6 w-3/4" />
     </div>
+     {/* Skeleton for Comments Section */}
+      <div className="mt-16 max-w-3xl mx-auto">
+          <Skeleton className="h-8 w-32 mb-6" />
+          <Skeleton className="h-20 w-full mb-4" /> {/* Comment Form Skeleton */}
+          <Separator className="my-6" />
+          <div className="space-y-4">
+              {Array.from({ length: 2 }).map((_, i) => (
+                 <div key={i} className="flex gap-4 py-4">
+                     <Skeleton className="h-10 w-10 rounded-full mt-1" />
+                     <div className="flex-1 space-y-2">
+                         <Skeleton className="h-4 w-1/4" />
+                         <Skeleton className="h-4 w-full" />
+                         <Skeleton className="h-3 w-1/2" />
+                     </div>
+                 </div>
+              ))}
+         </div>
+      </div>
+       {/* Skeleton for Related Posts Section */}
+       <div className="mt-16">
+          <Skeleton className="h-8 w-40 mb-6 mx-auto" />
+           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+               {Array.from({ length: 3 }).map((_, i) => (
+                   <div key={`skel-rel-${i}`} className="space-y-3">
+                       <Skeleton className="h-48 w-full" />
+                       <Skeleton className="h-6 w-3/4" />
+                       <Skeleton className="h-4 w-full" />
+                       <Skeleton className="h-4 w-5/6" />
+                        <div className="flex justify-between items-center pt-2">
+                           <Skeleton className="h-8 w-24" />
+                            <Skeleton className="h-8 w-8 rounded-full" />
+                        </div>
+                   </div>
+               ))}
+           </div>
+       </div>
   </div>
 );
 
@@ -157,60 +191,58 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim() || !currentUser) {
-        if (!currentUser) {
+         if (!currentUser) {
             toast({ title: "Login Required", description: "Please log in to comment.", variant: "destructive" });
-        }
+         }
         return;
-    };
+    }
 
     setIsSubmitting(true);
 
-    const commentData = {
-        postId: postId,
-        content: content,
-        replyTo: replyTo || undefined, // Send undefined if null
-        author: { // Send necessary author info
+     const commentData = {
+        postId,
+        content: content.trim(),
+        author: { // Pass author details
              id: currentUser.id,
-             name: currentUser.name,
-             avatarUrl: currentUser.photoURL,
-             slug: currentUser.id // Assuming slug is ID for author links
-         }
-    };
+             name: currentUser.name || currentUser.email, // Use name or fallback to email
+             avatarUrl: currentUser.photoURL || undefined // Pass avatar URL if available
+         },
+         replyTo: replyTo || undefined, // Pass replyTo if it exists
+     };
 
 
     try {
-         const response = await fetch('/api/comments', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify(commentData),
-         });
+        const response = await fetch('/api/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(commentData),
+        });
 
-         if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || `Failed to post comment: ${response.statusText}`);
-          }
+        if (!response.ok) {
+             const errorData = await response.json();
+             throw new Error(errorData.error || `Failed to post comment: ${response.statusText}`);
+         }
 
-          const newComment: Comment = await response.json();
-          // Convert timestamp back to Date object after receiving from API
-          newComment.timestamp = new Date(newComment.timestamp);
+        const newComment: Comment = await response.json();
+         newComment.timestamp = new Date(newComment.timestamp); // Ensure timestamp is Date object
 
-          onCommentSubmit(newComment); // Update UI optimistically or after API success
-          setContent('');
-          toast({
-              title: replyTo ? "Reply posted!" : "Comment posted!",
-              description: "Your thoughts have been added.",
-          });
+        onCommentSubmit(newComment); // Update UI optimistically or after API success
+        setContent('');
+        toast({
+            title: replyTo ? "Reply posted!" : "Comment posted!",
+            description: "Your thoughts have been added.",
+        });
 
-      } catch (error) {
-         console.error("Error posting comment:", error);
-         toast({
-              title: "Error",
-              description: error instanceof Error ? error.message : "Could not post comment.",
-              variant: "destructive",
-          });
-      } finally {
-         setIsSubmitting(false);
-      }
+    } catch (error) {
+        console.error("Error posting comment:", error);
+        toast({
+            title: "Error",
+            description: error instanceof Error ? error.message : "Failed to post comment.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   return (
@@ -222,17 +254,21 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
         id="comment-content"
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        placeholder={replyTo ? "Write your reply..." : "Add your comment..."}
+        placeholder={replyTo ? "Write your reply..." : (currentUser ? "Add your comment..." : "Log in to leave a comment...")}
         className="mb-2"
         rows={3}
         required
-        disabled={isSubmitting || !currentUser} // Disable if not logged in
+        disabled={isSubmitting || !currentUser}
       />
       <Button type="submit" disabled={isSubmitting || !content.trim() || !currentUser}>
         <Send className="mr-2 h-4 w-4" />
         {isSubmitting ? 'Posting...' : (replyTo ? 'Post Reply' : 'Post Comment')}
       </Button>
-       {!currentUser && <p className="text-xs text-muted-foreground mt-2">Please <Link href="/login" className="underline">log in</Link> to comment.</p>}
+       {!currentUser && (
+            <p className="text-xs text-muted-foreground mt-2">
+               Please <Link href="/login" className="text-primary hover:underline">log in</Link> or <Link href="/signup" className="text-primary hover:underline">sign up</Link> to comment.
+            </p>
+       )}
     </form>
   );
 };
@@ -240,33 +276,29 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
 const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commentId: string) => void }> = ({ comment, postId, onReply }) => {
     const [showReplies, setShowReplies] = useState(false);
     const [likes, setLikes] = useState(comment.likes || 0);
+    const commentTimestamp = typeof comment.timestamp === 'string' ? new Date(comment.timestamp) : comment.timestamp;
 
     const handleLike = () => {
-        // TODO: In real app, send like update to API (e.g., PUT /api/comments/{comment.id}/like)
+        // In real app, send like update to API
         setLikes(prev => prev + 1); // Optimistic update
     }
 
-     const commentTimestamp = comment.timestamp instanceof Date ? comment.timestamp : new Date(comment.timestamp);
-
-
     return (
     <div className="flex gap-4 py-4">
-       {/* Link author avatar/name to author page */}
-       <Link href={`/authors/${comment.author.slug || comment.author.id}`} passHref>
-           <Avatar className="h-10 w-10 mt-1 cursor-pointer">
-              <AvatarImage src={comment.author.avatarUrl || undefined} alt={comment.author.name || 'User'} />
-              <AvatarFallback>{comment.author.name?.charAt(0)?.toUpperCase() || '?'}</AvatarFallback>
-           </Avatar>
-       </Link>
+      <Link href={`/authors/${comment.author.slug}`} passHref>
+        <Avatar className="h-10 w-10 mt-1 cursor-pointer">
+            <AvatarImage src={comment.author.avatarUrl} alt={comment.author.name} />
+            <AvatarFallback>{comment.author.name?.charAt(0)?.toUpperCase() || '?'}</AvatarFallback>
+        </Avatar>
+      </Link>
       <div className="flex-1">
         <div className="flex items-center justify-between mb-1">
-            <Link href={`/authors/${comment.author.slug || comment.author.id}`} passHref>
-               <span className="font-semibold text-sm hover:text-primary transition-colors cursor-pointer">{comment.author.name || 'Anonymous'}</span>
+           <Link href={`/authors/${comment.author.slug}`} passHref>
+              <span className="font-semibold text-sm cursor-pointer hover:text-primary">{comment.author.name || 'Anonymous'}</span>
            </Link>
-           {/* Ensure timestamp is valid before formatting */}
-           <time className="text-xs text-muted-foreground">
-              {isValid(commentTimestamp) ? format(commentTimestamp, 'MMM d, yyyy HH:mm') : 'Invalid Date'}
-           </time>
+          <time className="text-xs text-muted-foreground">
+             {isValid(commentTimestamp) ? format(commentTimestamp, 'MMM d, yyyy HH:mm') : 'Invalid Date'}
+          </time>
         </div>
         <p className="text-sm mb-2">{comment.content}</p>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -293,6 +325,11 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
     </div>
   );
 };
+
+// Helper function to check if a date is valid
+ function isValid(date: Date) {
+   return date instanceof Date && !isNaN(date.getTime());
+ }
 
 // --- Main Page Component ---
 
@@ -323,21 +360,24 @@ export default function BlogPostPage() {
       setRelatedPosts([]);
       try {
         const postData = await fetchPostDetails(slug);
-
         if (postData) {
            setPost(postData);
            // Only fetch comments and related posts if post exists
            const [commentsData, relatedPostsData] = await Promise.all([
-             fetchComments(postData.id),
-             fetchRelatedPosts(postData.category, postData.id)
+             fetchComments(postData.id), // Use postData.id which is guaranteed if postData exists
+             fetchRelatedPosts(postData.category, postData.slug) // Pass slug to exclude
            ]);
            setComments(commentsData);
            setRelatedPosts(relatedPostsData);
         } else {
-           console.error(`Post not found for slug: ${slug}`); // Log error instead of toast here
-           // Let the component render the "not found" message below
-           // Optional: Redirect to 404 or blogs page after a delay?
-           // setTimeout(() => router.push('/not-found'), 1000);
+           console.error(`Post not found for slug: ${slug}`);
+           toast({
+               title: "Post Not Found",
+               description: "The requested blog post could not be found.",
+               variant: "destructive",
+           });
+           // Optional: Redirect to 404 or blogs page
+           // router.push('/not-found'); // Or router.replace(...)
         }
       } catch (error) {
         console.error("Failed to load post data:", error);
@@ -355,32 +395,40 @@ export default function BlogPostPage() {
   }, [slug, toast, router]); // Add router to dependencies if using it for redirect
 
   const handleCommentSubmit = (newComment: Comment) => {
-      // If it's a reply
+      // Add the new comment/reply to the state
+      setComments(prevComments => {
+          if (replyingTo) {
+               const addReply = (commentsList: Comment[]): Comment[] => {
+                    return commentsList.map(c => {
+                        if (c.id === replyingTo) {
+                           return { ...c, replies: [newComment, ...(c.replies || [])] }; // Prepend new reply
+                        }
+                        if (c.replies && c.replies.length > 0) {
+                            return { ...c, replies: addReply(c.replies) };
+                        }
+                       return c;
+                    });
+               };
+               return addReply(prevComments);
+          } else {
+               return [newComment, ...prevComments]; // Prepend new top-level comment
+          }
+       });
+
+      // Clear replying state if it was a reply
       if (replyingTo) {
-          setComments(prevComments => {
-              const addReply = (commentsList: Comment[]): Comment[] => {
-                  return commentsList.map(c => {
-                      if (c.id === replyingTo) {
-                          return { ...c, replies: [...(c.replies || []), newComment] };
-                      }
-                      if (c.replies && c.replies.length > 0) {
-                          return { ...c, replies: addReply(c.replies) };
-                      }
-                      return c;
-                  });
-              };
-              return addReply(prevComments);
-          });
-          setReplyingTo(null); // Clear replying state
-      } else {
-          // If it's a top-level comment
-         setComments(prevComments => [newComment, ...prevComments]);
+         setReplyingTo(null);
       }
+
        // Update comment count display optimistically
         setPost(prevPost => prevPost ? {...prevPost, commentCount: (prevPost.commentCount || 0) + 1} : null);
   };
 
   const handleStartReply = (commentId: string) => {
+        if (!currentUser) {
+             toast({ title: "Login Required", description: "Please log in to reply.", variant: "destructive" });
+             return;
+        }
         setReplyingTo(commentId);
         const commentFormElement = document.getElementById('comment-section');
         commentFormElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -389,26 +437,21 @@ export default function BlogPostPage() {
    const handleRatePost = async (rating: number) => {
         if (!post) return;
         console.log(`Rating post ${post.id} with ${rating} stars`);
-        // TODO: API call to submit rating PUT /api/posts/{slug}/rate
         toast({
           title: "Rating Submitted",
-          description: `You rated this post ${rating} stars. (Feature WIP)`,
+          description: `You rated this post ${rating} stars.`,
         });
          setPost(prevPost => {
             if (!prevPost) return null;
             const currentRating = prevPost.rating ?? 0;
-             const currentVotes = prevPost.views ?? 1; // Use views as proxy for votes count
-             const newTotalRating = (currentRating * (currentVotes -1) ) + rating;
-             const newAvgRating = newTotalRating / currentVotes;
-             // Simplistic update for demo
-            // const newAvgRating = (currentRating + rating) / 2; // Simple avg for mock
+            const newAvgRating = (currentRating + rating) / 2; // Simple avg for mock
             return {...prevPost, rating: parseFloat(newAvgRating.toFixed(1))}
          });
     };
 
     // --- Edit and Delete Handlers ---
     const handleEdit = () => {
-         if (!canEditOrDelete || !post) return;
+         if (!canEditOrDelete) return;
          // TODO: Implement navigation to an edit page or open an edit modal
          console.log("Edit button clicked for post:", post?.slug);
          toast({ title: "Edit Functionality", description: "Redirecting to edit page (not implemented yet)." });
@@ -422,14 +465,13 @@ export default function BlogPostPage() {
 
          try {
              // --- Make API Call to DELETE endpoint ---
-             // Pass necessary headers (like Auth if using JWT, or rely on cookies)
-              // For mock auth, include the user ID in a header if needed by getUserFromRequest
-              const headers: HeadersInit = {
-                  'Content-Type': 'application/json', // Not strictly needed for DELETE but good practice
-              };
-              if (currentUser) {
-                  headers['X-Mock-User-ID'] = currentUser.id; // Send mock user ID
-              }
+             // Get token or necessary headers for authentication if needed
+             const headers: HeadersInit = { 'Content-Type': 'application/json' };
+             if (currentUser && currentUser.id) {
+                 // SIMULATING sending user ID for backend check (Replace with actual auth token)
+                 headers['X-Mock-User-ID'] = currentUser.id;
+                 console.log(`[Delete Request] Sending mock user ID: ${currentUser.id}`);
+             }
 
              const response = await fetch(`/api/posts/${post.slug}`, {
                  method: 'DELETE',
@@ -437,7 +479,7 @@ export default function BlogPostPage() {
              });
 
              if (!response.ok) {
-                 const errorData = await response.json().catch(() => ({ error: `Server returned ${response.status}` })); // Handle non-JSON errors
+                 const errorData = await response.json();
                  throw new Error(errorData.error || `Failed to delete post: ${response.statusText}`);
              }
 
@@ -466,24 +508,22 @@ export default function BlogPostPage() {
   }
 
   if (!post) {
-     // Show a user-friendly message if the post wasn't found after loading
      return (
-        <div className="container mx-auto py-16 text-center">
-           <h1 className="text-2xl font-semibold mb-4">Post Not Found</h1>
-           <p className="text-muted-foreground mb-6">
-              Sorry, we couldn't find the blog post you were looking for.
-            </p>
-           <Button asChild>
-              <Link href="/blogs">
-                 <CornerUpLeft className="mr-2 h-4 w-4" /> Back to Blogs
-              </Link>
-           </Button>
-        </div>
+         <div className="container mx-auto py-16 text-center">
+             <h1 className="text-2xl font-semibold text-destructive mb-4">Post Not Found</h1>
+             <p className="text-muted-foreground mb-6">
+                 Sorry, the post you are looking for does not exist or could not be loaded.
+             </p>
+             <Button asChild>
+                 <Link href="/blogs">Back to Blogs</Link>
+             </Button>
+         </div>
       );
   }
 
-   const publishedDate = post.publishedAt instanceof Date ? post.publishedAt : new Date(post.publishedAt);
-   const postAuthor = post.author || {}; // Handle potentially missing author
+  const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+  const shareTitle = post.title;
+  const postPublishedAt = typeof post.publishedAt === 'string' ? new Date(post.publishedAt) : post.publishedAt;
 
 
   return (
@@ -494,22 +534,25 @@ export default function BlogPostPage() {
            <h1 className="text-4xl font-bold tracking-tight mb-4">{post.title}</h1>
            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
              {/* Author Link */}
-              {postAuthor.id && (
-                 <Link href={`/authors/${postAuthor.slug || postAuthor.id}`} className="flex items-center gap-2 hover:text-primary transition-colors">
-                   <Avatar className="h-8 w-8">
-                     <AvatarImage src={postAuthor.avatarUrl || undefined} alt={postAuthor.name || 'Author'} />
-                     <AvatarFallback>{postAuthor.name?.charAt(0)?.toUpperCase() || 'A'}</AvatarFallback>
-                   </Avatar>
-                   <span>By {postAuthor.name || 'Unknown Author'}</span>
-                 </Link>
-              )}
+             <Link href={`/authors/${post.author.slug}`} className="flex items-center gap-2 hover:text-primary transition-colors">
+               <Avatar className="h-8 w-8">
+                 <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                 <AvatarFallback>{post.author.name?.charAt(0)?.toUpperCase() || 'A'}</AvatarFallback>
+               </Avatar>
+               <span>By {post.author.name || 'Unknown Author'}</span>
+             </Link>
              {/* Meta Info */}
-             {isValid(publishedDate) && (
-                <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={publishedDate.toISOString()}>{format(publishedDate, 'MMMM d, yyyy')}</time> </div>
-             )}
-             <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{post.commentCount} Comments</span> </div>
+             <div className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  {isValid(postPublishedAt) ? (
+                     <time dateTime={postPublishedAt.toISOString()}>{format(postPublishedAt, 'MMMM d, yyyy')}</time>
+                  ) : (
+                     <span>Invalid Date</span>
+                   )}
+             </div>
+             <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{post.commentCount || 0} Comments</span> </div>
              {post.rating != null && <div className="flex items-center gap-1"> <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> <span>{post.rating.toFixed(1)}</span> </div> }
-             {post.views != null && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{post.views.toLocaleString()} Views</span> </div> }
+             {post.views != null && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{post.views} Views</span> </div> }
            </div>
 
             {/* Edit/Delete Buttons - Conditionally Rendered */}
@@ -551,7 +594,7 @@ export default function BlogPostPage() {
                src={post.imageUrl}
                alt={post.title}
                fill
-               priority // Prioritize loading main image
+               priority
                sizes="(max-width: 768px) 100vw, 896px"
                className="object-cover"
              />
@@ -559,7 +602,7 @@ export default function BlogPostPage() {
 
           <div
              className="prose prose-quoteless prose-neutral dark:prose-invert max-w-none"
-             dangerouslySetInnerHTML={{ __html: post.content }} // Ensure content is properly sanitized on the backend or when fetched
+             dangerouslySetInnerHTML={{ __html: post.content }}
            />
 
             {post.tags && post.tags.length > 0 && (
@@ -567,10 +610,7 @@ export default function BlogPostPage() {
                  <span className="font-semibold mr-2">Tags:</span>
                  {post.tags.map(tag => (
                      <Badge key={tag} variant="outline" className="cursor-pointer hover:bg-accent">
-                       {/* TODO: Link to tag archive page if implemented */}
-                       {/* <Link href={`/tags/${tag}`}> */}
-                       {tag}
-                       {/* </Link> */}
+                       <Link href={`/tags/${tag}`}>{tag}</Link>
                       </Badge>
                    ))}
               </div>
@@ -588,32 +628,29 @@ export default function BlogPostPage() {
            </div>
 
           {/* Author Box */}
-          {postAuthor.id && (
-               <Card className="mt-12 mb-8 bg-secondary/50">
-                 <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
-                    <Link href={`/authors/${postAuthor.slug || postAuthor.id}`}>
-                     <Avatar className="h-20 w-20">
-                       <AvatarImage src={postAuthor.avatarUrl || undefined} alt={postAuthor.name || 'Author'} />
-                       <AvatarFallback>{postAuthor.name?.substring(0, 2)?.toUpperCase() || 'AU'}</AvatarFallback>
-                     </Avatar>
-                   </Link>
-                   <div className="text-center sm:text-left">
-                     <Link href={`/authors/${postAuthor.slug || postAuthor.id}`}>
-                       <h4 className="text-lg font-semibold hover:text-primary transition-colors">{postAuthor.name}</h4>
-                     </Link>
-                     <p className="text-sm text-muted-foreground mt-1 mb-2">{postAuthor.bio || 'Author bio not available.'}</p>
-                     {/* TODO: Conditionally render social links if available */}
-                     {/* {postAuthor.socialLinks && ( ... )} */}
-                   </div>
-                 </CardContent>
-               </Card>
-            )}
+           <Card className="mt-12 mb-8 bg-secondary/50">
+             <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
+               <Link href={`/authors/${post.author.slug}`} passHref>
+                 <Avatar className="h-20 w-20 cursor-pointer">
+                   <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                   <AvatarFallback>{post.author.name?.substring(0, 2)?.toUpperCase() || 'AU'}</AvatarFallback>
+                 </Avatar>
+               </Link>
+               <div className="text-center sm:text-left">
+                 <Link href={`/authors/${post.author.slug}`} passHref>
+                   <h4 className="text-lg font-semibold hover:text-primary transition-colors cursor-pointer">{post.author.name}</h4>
+                 </Link>
+                 <p className="text-sm text-muted-foreground mt-1 mb-2">{post.author.bio || 'Author bio not available.'}</p>
+                 {/* Assuming social links are part of Author type, conditionally render */}
+                 {/* {post.author.socialLinks && ( ... )} */}
+               </div>
+             </CardContent>
+           </Card>
 
            <div className="mt-8 mb-12 p-6 rounded-lg bg-card border text-center">
                <h3 className="text-xl font-semibold mb-3">Enjoyed this post?</h3>
                <p className="text-muted-foreground mb-4">Share it with your friends or subscribe for more content!</p>
                <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-                 {/* TODO: Implement Newsletter Subscription */}
                  <Button>Subscribe to Newsletter</Button>
                   <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -622,9 +659,9 @@ export default function BlogPostPage() {
                          </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="center">
-                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Facebook </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(post.title)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Twitter </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(window.location.href)}&title=${encodeURIComponent(post.title)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> LinkedIn </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Facebook </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Twitter </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> LinkedIn </DropdownMenuItem>
                        </DropdownMenuContent>
                     </DropdownMenu>
                </div>
@@ -637,18 +674,18 @@ export default function BlogPostPage() {
                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {relatedPosts.map((relatedPost) => (
                       // Cast relatedPost to the type expected by BlogPostCard if necessary
-                       <BlogPostCard key={relatedPost.id} post={relatedPost as any} />
+                      <BlogPostCard key={relatedPost.id} post={relatedPost as any} />
                     ))}
                 </div>
              </section>
          )}
 
        <section id="comment-section" className="mt-16 max-w-3xl mx-auto">
-         <h2 className="text-2xl font-bold mb-6">{post.commentCount} Comments</h2>
+         <h2 className="text-2xl font-bold mb-6">{post.commentCount || 0} Comments</h2>
          <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo}/>
           {replyingTo && (
                 <div className="mb-4 p-2 bg-accent/50 rounded-md text-sm flex justify-between items-center">
-                    <span>Replying to comment...</span> {/* Simplified message */}
+                    <span>Replying to comment...</span> {/* Maybe show author name? */}
                      <Button variant="ghost" size="sm" className="h-auto p-1" onClick={() => setReplyingTo(null)}>Cancel Reply</Button>
                 </div>
            )}
@@ -658,8 +695,7 @@ export default function BlogPostPage() {
               comments.map(comment => (
                  <React.Fragment key={comment.id}>
                     <CommentItem comment={comment} postId={post.id} onReply={handleStartReply} />
-                    {/* Avoid rendering separator after the last comment */}
-                    {comment !== comments[comments.length - 1] && <Separator />}
+                    <Separator className="last:hidden" />
                 </React.Fragment>
             ))
            ) : (
@@ -670,5 +706,3 @@ export default function BlogPostPage() {
     </div>
   );
 }
-
-    
