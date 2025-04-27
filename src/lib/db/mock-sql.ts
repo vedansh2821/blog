@@ -1,3 +1,4 @@
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -43,27 +44,30 @@ export const findUserById = async (id: string): Promise<MockUser | null> => {
 
 // Add function to get all users (excluding password hashes)
 export const getAllUsers = async (requestingUserId: string): Promise<Omit<MockUser, 'hashedPassword'>[]> => {
-    // Authorization check (although simple for mock)
+    // Authorization check
+    console.log(`[Mock DB getAllUsers] Performing authorization check for requesting user ID: ${requestingUserId}`);
     const requestingUser = await findUserById(requestingUserId);
     if (!requestingUser) {
-        console.warn(`[Mock DB] Unauthorized attempt to get all users by unknown ID: ${requestingUserId}`);
+        console.warn(`[Mock DB getAllUsers] Unauthorized attempt: Requesting user not found.`);
         throw new Error("Unauthorized: Requesting user not found.");
     }
 
     if (requestingUser.role !== 'admin') {
-        console.warn(`[Mock DB] Forbidden: User ${requestingUser.id} (${requestingUser.email}) is not an admin.`);
+        console.warn(`[Mock DB getAllUsers] Forbidden: User ${requestingUser.id} (${requestingUser.email}) is not an admin.`);
         throw new Error("Forbidden: Only admins can access the full user list.");
     }
 
-    console.log(`[Mock DB] Getting all users for admin ID: ${requestingUserId}`);
+    console.log(`[Mock DB getAllUsers] User ${requestingUser.id} is authorized as admin.`);
+    console.log(`[Mock DB getAllUsers] Returning all users (count: ${users.length})`);
     // Return copies of users without the password hash
     return users.map(user => {
         const { hashedPassword, ...userWithoutHash } = user;
         // Ensure date objects are handled correctly when returning
+        // Return the actual Date object here, the API route will handle serialization
         return {
             ...userWithoutHash,
             joinedAt: new Date(userWithoutHash.joinedAt),
-             // dob might be null, handle appropriately if needed, but should be string 'YYYY-MM-DD' or null
+            // dob should already be 'YYYY-MM-DD' string or null
         };
     });
 };
@@ -264,7 +268,6 @@ export const createPost = async (
     console.log(`[Mock DB createPost] Finalizing post creation: Title="${newPost.title}", Slug="${newPost.slug}", ID="${newPost.id}", AuthorID="${newPost.author.id}"`);
     posts.push(newPost); // Add to the in-memory array
     console.log(`[Mock DB createPost] Current post count: ${posts.length}`);
-    console.log(`[Mock DB createPost] Current post slugs: ${posts.map(p => p.slug).join(', ')}`);
     // Find the newly added post to ensure it exists before returning
     const addedPost = posts.find(p => p.id === newPost.id);
     if (!addedPost) {
@@ -282,18 +285,11 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB findPostBySlug] Searching for post with slug (trimmed, case-insensitive): "${trimmedSlug}"`);
-    console.log(`[Mock DB findPostBySlug] Total posts in DB: ${posts.length}`);
-    const allSlugs = posts.map(p => p.slug.trim().toLowerCase()).join(', ');
-    console.log(`[Mock DB findPostBySlug] Available slugs: ${allSlugs}`);
 
     const post = posts.find(p => p.slug.trim().toLowerCase() === trimmedSlug);
 
     if (!post) {
         console.warn(`[Mock DB findPostBySlug] Post with slug "${trimmedSlug}" not found.`);
-        const postById = posts.find(p => p.id === slug); // Check if maybe ID was passed
-        if (postById) {
-             console.warn(`[Mock DB findPostBySlug] However, found post by ID "${slug}": Title: "${postById.title}" (Slug: "${postById.slug}")`);
-        }
         return null;
     }
 
@@ -327,18 +323,14 @@ export const findPosts = async (options: {
 }): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
     const { page = 0, limit = 9, category, authorId, query } = options;
     console.log(`[Mock DB findPosts] Finding posts with options:`, options);
-    console.log(`[Mock DB findPosts] Total posts before filtering: ${posts.length}`);
-
 
     let filtered = [...posts]; // Start with a copy
 
     if (category && category !== 'all') {
         filtered = filtered.filter(p => p.category.toLowerCase() === category.toLowerCase());
-        console.log(`[Mock DB findPosts] After category filter (${category}): ${filtered.length} posts`);
     }
     if (authorId) {
         filtered = filtered.filter(p => p.author.id === authorId);
-        console.log(`[Mock DB findPosts] After author filter (${authorId}): ${filtered.length} posts`);
     }
     if (query) {
         const lowerQuery = query.toLowerCase();
@@ -349,7 +341,6 @@ export const findPosts = async (options: {
             p.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
              p.author.name?.toLowerCase().includes(lowerQuery) // Check optional author name
         );
-        console.log(`[Mock DB findPosts] After query filter ("${query}"): ${filtered.length} posts`);
     }
 
     // Sort AFTER filtering
@@ -393,7 +384,6 @@ export const updatePost = async (
         return null;
     }
     console.log(`[Mock DB updatePost] Attempting to update post with slug: ${lowerCaseSlug}`);
-    console.log(`[Mock DB updatePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
 
     const postIndex = posts.findIndex(p => p.slug.trim().toLowerCase() === lowerCaseSlug); // Trim during comparison
@@ -501,7 +491,6 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
         return false;
     }
     console.log(`[Mock DB deletePost] Attempting to delete post with slug: ${lowerCaseSlug} by user: ${requestingUserId}`);
-    console.log(`[Mock DB deletePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
 
     const postIndex = posts.findIndex(p => p.slug.trim().toLowerCase() === lowerCaseSlug); // Trim during comparison
@@ -706,3 +695,4 @@ const seedData = async () => {
  if (!isSeeded) {
      seedData();
  }
+
