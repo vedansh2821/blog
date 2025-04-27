@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
@@ -11,6 +12,8 @@ export interface AuthUser {
   role: 'user' | 'admin'; // Add role
   dob?: string | null; // Date of Birth (optional, store as ISO string e.g., 'YYYY-MM-DD')
   phone?: string | null; // Phone number (optional)
+  firstSchool?: string | null; // Added First School Name
+  petName?: string | null; // Added Pet's Name
   joinedAt?: Date | string; // Date the user joined (optional)
 }
 
