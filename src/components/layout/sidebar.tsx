@@ -3,7 +3,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Home, BookOpen, Hash, Star, Gamepad2, Target, Square } from 'lucide-react'; // Added Gamepad2, Target, Square
+import { Home, BookOpen, Hash, Star, Gamepad2 } from 'lucide-react'; // Removed specific game icons
 import {
   Sidebar as ShadSidebar,
   SidebarContent,
@@ -32,16 +32,11 @@ const popularPosts = [
   { title: '10 Healthy Habits', slug: 'healthy-habits' },
 ];
 
-const funGames = [
-    { name: 'Balloon Buster', slug: 'balloon-buster', icon: <Target /> },
-    { name: 'Platformer Fun', slug: 'platformer-fun', icon: <Square /> },
-     // Add more placeholder games here
-];
 
 export default function Sidebar() {
   return (
-    <ShadSidebar side="left" variant="sidebar" collapsible="offcanvas">
-      <SidebarContent className="p-0 pt-10"> {/* Increased top padding */}
+    <ShadSidebar side="left" variant="sidebar" collapsible="icon"> {/* Changed collapsible to icon */}
+      <SidebarContent className="p-0 pt-16"> {/* Added top padding */}
          <SidebarMenu className="p-2">
             <SidebarMenuItem>
               <SidebarMenuButton href="/" tooltip="Home">
@@ -88,6 +83,7 @@ export default function Sidebar() {
               {popularPosts.map((post) => (
                 <SidebarMenuItem key={post.slug}>
                   <SidebarMenuButton href={`/blogs/${post.slug}`} size="sm" tooltip={post.title}>
+                    {/* Removed icon span if not needed */}
                     <span>{post.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -98,26 +94,16 @@ export default function Sidebar() {
 
         <SidebarSeparator />
 
-        {/* Fun Tab Section */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="flex items-center gap-2">
-            <Gamepad2 />
-            <span>Fun Tab</span>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {funGames.map((game) => (
-                <SidebarMenuItem key={game.slug}>
-                  {/* Using # as href for now, replace with actual routes when games are built */}
-                  <SidebarMenuButton href="#" size="sm" tooltip={game.name}>
-                     {game.icon}
-                    <span>{game.name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Fun Tab Section - Changed to single link */}
+         <SidebarMenu className="p-2">
+           <SidebarMenuItem>
+               <SidebarMenuButton href="/fun" tooltip="Fun Tab">
+                  <Gamepad2 />
+                  <span>Fun Tab</span>
+               </SidebarMenuButton>
+           </SidebarMenuItem>
+         </SidebarMenu>
+
 
       </SidebarContent>
       <SidebarFooter className="p-2">
