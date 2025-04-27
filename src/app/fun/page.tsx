@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Gamepad2, Construction } from 'lucide-react'; // Added Construction icon
+import { Gamepad2, Construction, Puzzle, Route } from 'lucide-react'; // Added Puzzle, Route icons
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { cn } from '@/lib/utils'; // Import cn
@@ -37,7 +37,7 @@ export default function FunTabPage() {
          <Construction className="h-5 w-5" />
          <AlertTitle>Under Development</AlertTitle>
          <AlertDescription>
-           This section is currently being built. More fun games and activities are coming soon!
+           This section is currently being built. More fun games and activities are coming soon! (Some games below are basic implementations)
          </AlertDescription>
        </Alert>
       <p className="text-muted-foreground text-center mb-12 max-w-xl mx-auto">
@@ -53,20 +53,21 @@ export default function FunTabPage() {
             icon={<Gamepad2 className="h-5 w-5 text-primary" />}
          />
 
-         {/* Add Other Game Cards Here */}
+         {/* Platformer Fun Game Card */}
          <GameCard
             title="Platformer Fun"
-            description="Jump and run through exciting levels!"
-            href="#" // Update href when implemented
-            icon={<Gamepad2 className="h-5 w-5 text-muted-foreground" />}
-            disabled={true}
+            description="Jump and run through this basic platformer!"
+            href="/fun/platformer-fun" // Update href when implemented
+            icon={<Route className="h-5 w-5 text-primary" />} // Use Route icon
+            disabled={false} // Enable the card
          />
+         {/* Memory Match Game Card */}
          <GameCard
             title="Memory Match"
             description="Test your memory with this classic card game."
-             href="#" // Update href when implemented
-            icon={<Gamepad2 className="h-5 w-5 text-muted-foreground" />}
-             disabled={true}
+             href="/fun/memory-match" // Update href when implemented
+            icon={<Puzzle className="h-5 w-5 text-primary" />} // Use Puzzle icon
+             disabled={false} // Enable the card
          />
          {/* Add more game cards as needed */}
       </div>
