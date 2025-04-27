@@ -1,9 +1,10 @@
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
 import type { AuthUser } from '@/lib/auth/authContext';
 import type { Post, Author } from '@/types/blog'; // Assuming types exist
-import bcrypt from 'bcrypt'; // Ensure bcrypt is imported
+import bcrypt from 'bcrypt';
 
 interface MockUser extends AuthUser {
     hashedPassword?: string; // Store hashed password here
@@ -12,27 +13,53 @@ interface MockUser extends AuthUser {
 // --- In-Memory Stores ---
 const users: MockUser[] = [];
 const posts: Post[] = [];
-let userIdCounter = 1;
 let postIdCounter = 1;
+let userIdCounter = 1; // Counter for user IDs
 
-// --- Helper Functions ---
-const generateSlug = (title: string, id: string): string => {
-    // Simple slug generation: lowercase title + id suffix
-    const baseSlug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
-        .replace(/\s+/g, '-') // Replace spaces with hyphens
-        .replace(/-+/g, '-') // Replace multiple hyphens with single
-        .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
-    return `${baseSlug}-${id}`; // Use actual ID for uniqueness
+// --- User Functions ---
+
+export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
+    console.log(`[Mock DB] Finding user by email: ${email}`);
+    const user = users.find(u => u.email === email);
+    console.log(`[Mock DB] User found by email "${email}":`, user ? { id: user.id, email: user.email, name: user.name, role: user.role } : null);
+    return user ? { ...user } : null; // Return a copy
 };
+
+export const findUserById = async (id: string): Promise<MockUser | null> => {
+    console.log(`[Mock DB] Finding user by ID: ${id}`);
+    const user = users.find(u => u.id === id);
+     console.log(`[Mock DB] User found by ID "${id}":`, user ? { id: user.id, email: user.email, name: user.name, role: user.role } : null);
+    return user ? { ...user } : null;
+};
+
+export const createUser = async (userData: Omit<MockUser, 'id'>): Promise<MockUser> => {
+    // Basic check for existing email before hashing etc.
+    const existing = users.find(u => u.email === userData.email);
+    if (existing) {
+        console.error(`[Mock DB] Attempted to create user with existing email: ${userData.email}`);
+        throw new Error("Email already in use"); // Prevent duplicates
+    }
+
+    const newUser: MockUser = {
+        ...userData,
+        id: `user-${userIdCounter++}`,
+    };
+    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}`);
+    users.push(newUser);
+    // Return a copy without the password hash for safety
+    const { hashedPassword, ...userResponse } = newUser;
+    return userResponse;
+};
+
+// --- Post Functions ---
 
 const createAuthorObject = (user: MockUser | null): Author => {
     if (!user) {
+        console.warn("[Mock DB] createAuthorObject called with null user. Returning Unknown Author.");
         return {
-            id: 'unknown',
+            id: 'unknown-author-id', // Use a distinct ID
             name: 'Unknown Author',
-            slug: 'unknown',
+            slug: 'unknown-author',
             avatarUrl: `https://i.pravatar.cc/40?u=unknown`,
             bio: 'Author information not available.',
         };
@@ -40,58 +67,48 @@ const createAuthorObject = (user: MockUser | null): Author => {
     return {
         id: user.id,
         name: user.name || user.email || 'Unnamed Author',
-        slug: user.id, // Use ID as slug for now
+        slug: user.id, // Use ID as slug for now, ensure it's consistent
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Bio for ${user.name || user.email}`, // Simple bio
     };
 };
 
+const generateSlug = (title: string): string => {
+    const baseSlug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
 
-// --- User Functions ---
-
-export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
-    console.log(`[Mock DB] Finding user by email: ${email}`);
-    await new Promise(res => setTimeout(res, 50)); // Simulate delay
-    const user = users.find(u => u.email === email);
-    return user ? { ...user } : null; // Return a copy
-};
-
-export const findUserById = async (id: string): Promise<MockUser | null> => {
-    console.log(`[Mock DB] Finding user by ID: ${id}`);
-     await new Promise(res => setTimeout(res, 50)); // Simulate delay
-    const user = users.find(u => u.id === id);
-    return user ? { ...user } : null;
-};
-
-export const createUser = async (userData: Omit<MockUser, 'id'> & { hashedPassword?: string }): Promise<MockUser> => {
-    const newUser: MockUser = {
-        ...userData,
-        id: `user-${userIdCounter++}`,
-    };
-    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}`);
-    await new Promise(res => setTimeout(res, 100)); // Simulate delay
-    users.push(newUser);
-    // Don't return hashedPassword in the response object for security
-    const { hashedPassword, ...userResponse } = newUser;
-    return { ...userResponse };
-};
-
-// --- Post Functions ---
+     // Check for uniqueness, append counter if needed
+     let slug = baseSlug;
+     let counter = 0;
+     while (posts.some(p => p.slug === slug)) {
+         counter++;
+         slug = `${baseSlug}-${counter}`;
+     }
+    console.log(`[Mock DB] Generated slug "${slug}" for title "${title}"`);
+    return slug;
+  };
 
 
 export const createPost = async (postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'> & { authorId: string }): Promise<Post> => {
+    console.log(`[Mock DB] Attempting to create post by authorId: ${postData.authorId}`);
     const author = await findUserById(postData.authorId);
     if (!author) {
-        throw new Error(`[Mock DB] Author not found for ID: ${postData.authorId}`);
+        console.error(`[Mock DB] Author not found for ID: ${postData.authorId} during post creation.`);
+        throw new Error(`Author not found`); // More specific error
     }
+    console.log(`[Mock DB] Author found: ${author.name} (${author.id})`);
 
-    const newPostId = `post-${postIdCounter++}`;
+    const slug = generateSlug(postData.title); // Ensure unique slug
     const newPost: Post = {
-        id: newPostId,
-        slug: generateSlug(postData.title, newPostId), // Generate slug using ID
+        id: `post-${postIdCounter++}`,
+        slug: slug, // Use generated unique slug
         title: postData.title,
         content: postData.content,
-        imageUrl: postData.imageUrl || `https://picsum.photos/seed/${newPostId}/1200/600`,
+        imageUrl: postData.imageUrl || `https://picsum.photos/seed/${slug}/1200/600`, // Use slug for image seed
         category: postData.category,
         author: createAuthorObject(author),
         publishedAt: new Date(),
@@ -102,58 +119,66 @@ export const createPost = async (postData: Omit<Post, 'id' | 'slug' | 'author' |
         tags: postData.tags || [],
         // rating: 0, // Add if needed
     };
-    console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
-     await new Promise(res => setTimeout(res, 150)); // Simulate delay
+    console.log(`[Mock DB] Creating post: "${newPost.title}" (ID: ${newPost.id}, Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
+    console.log(`[Mock DB] Current posts count: ${posts.length}`);
     return { ...newPost }; // Return a copy
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
-    console.log(`[Mock DB] Finding post by slug: ${slug}`);
-     await new Promise(res => setTimeout(res, 80)); // Simulate delay
+    console.log(`[Mock DB] Finding post by slug: "${slug}"`);
     const post = posts.find(p => p.slug === slug);
+
     if (!post) {
-        console.log(`[Mock DB] Post with slug ${slug} not found.`);
+         console.log(`[Mock DB] Post with slug "${slug}" NOT FOUND.`);
+         console.log('[Mock DB] Available slugs:', posts.map(p => p.slug)); // Log available slugs for debugging
         return null;
     }
 
+    console.log(`[Mock DB] Post FOUND with slug "${slug}": ID ${post.id}, Title: "${post.title}", Author ID: ${post.author.id}`);
     // Simulate fetching author details again (or ensure they are always embedded)
     const author = await findUserById(post.author.id);
-    return { ...post, author: createAuthorObject(author) }; // Return copy with fresh author
+    if (!author) {
+         console.warn(`[Mock DB] Author ${post.author.id} not found for post ${post.id}, returning post with potentially stale/unknown author info.`);
+    }
+    const authorObject = createAuthorObject(author); // Use potentially unknown author
+    console.log(`[Mock DB] Returning post "${post.title}" with author "${authorObject.name}"`);
+    return { ...post, author: authorObject }; // Return copy with potentially updated author
 };
+
 
 export const findPosts = async (options: {
     page?: number;
     limit?: number;
     category?: string;
-    authorId?: string; // Use author ID directly
+    authorId?: string; // Changed from authorSlug to authorId for clarity
     query?: string;
 }): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
     const { page = 0, limit = 9, category, authorId, query } = options;
-    console.log(`[Mock DB] Finding posts:`, options);
-    await new Promise(res => setTimeout(res, 200)); // Simulate delay
+    console.log(`[Mock DB] Finding posts with options:`, options);
 
     let filtered = [...posts]; // Start with a copy
 
-    if (category && category.toLowerCase() !== 'all') {
+    if (category && category !== 'all') {
+        console.log(`[Mock DB] Filtering by category: ${category}`);
         filtered = filtered.filter(p => p.category.toLowerCase() === category.toLowerCase());
     }
     if (authorId) {
+        console.log(`[Mock DB] Filtering by authorId: ${authorId}`);
         filtered = filtered.filter(p => p.author.id === authorId);
     }
     if (query) {
+        console.log(`[Mock DB] Filtering by query: ${query}`);
         const lowerQuery = query.toLowerCase();
         filtered = filtered.filter(p =>
             p.title.toLowerCase().includes(lowerQuery) ||
-            (p.excerpt && p.excerpt.toLowerCase().includes(lowerQuery)) || // Check if excerpt exists
-            p.content.toLowerCase().includes(lowerQuery) ||
-             (p.author.name && p.author.name.toLowerCase().includes(lowerQuery)) || // Search by author name
-             (p.tags && p.tags.some(tag => tag.toLowerCase().includes(lowerQuery))) // Search tags
+            p.excerpt.toLowerCase().includes(lowerQuery) ||
+            p.content.toLowerCase().includes(lowerQuery)
         );
     }
 
     // Sort by date descending
-    filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    filtered.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 
     const totalResults = filtered.length;
     const totalPages = Math.ceil(totalResults / limit);
@@ -162,13 +187,18 @@ export const findPosts = async (options: {
     const postsForPage = filtered.slice(startIndex, endIndex);
     const hasMore = endIndex < totalResults;
 
+    console.log(`[Mock DB] Found ${totalResults} total posts matching criteria. Returning page ${page} (${postsForPage.length} posts), hasMore=${hasMore}.`);
+
+
     // Ensure author details are up-to-date for the returned page
     const postsWithAuthors = await Promise.all(postsForPage.map(async (post) => {
         const author = await findUserById(post.author.id);
+         if (!author) {
+            console.warn(`[Mock DB] Author ${post.author.id} not found for post ${post.id} in findPosts list.`);
+         }
         return { ...post, author: createAuthorObject(author) };
     }));
 
-    console.log(`[Mock DB] Found ${totalResults} posts, returning page ${page} (${postsWithAuthors.length} posts)`);
     return {
         posts: postsWithAuthors,
         hasMore,
@@ -178,166 +208,166 @@ export const findPosts = async (options: {
     };
 };
 
-export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'>> & { currentUserId: string }): Promise<Post | null> => {
-    console.log(`[Mock DB] Updating post with slug: ${slug}`);
-     await new Promise(res => setTimeout(res, 100)); // Simulate delay
+export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'>> & { authorId: string }): Promise<Post | null> => {
+    console.log(`[Mock DB] Attempting update for post slug: "${slug}" by authorId: ${updateData.authorId}`);
     const postIndex = posts.findIndex(p => p.slug === slug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for update: ${slug}`);
         return null;
     }
 
-    const postToUpdate = posts[postIndex];
-    const currentUser = await findUserById(updateData.currentUserId);
+    const originalPost = posts[postIndex];
+    console.log(`[Mock DB] Found post "${originalPost.title}" (ID: ${originalPost.id}) for update.`);
 
-    // **Authorization Check**: Ensure the currentUserId matches the post's author OR user is admin
-    if (postToUpdate.author.id !== updateData.currentUserId && currentUser?.role !== 'admin') {
-         console.error(`[Mock DB] Authorization failed: User ${updateData.currentUserId} cannot update post owned by ${postToUpdate.author.id}`);
-         throw new Error("Unauthorized: You don't have permission to edit this post.");
+    // **Authorization Check**: Ensure the authorId matches the post's author OR user is admin
+    const requestingUser = await findUserById(updateData.authorId);
+    if (!requestingUser) {
+         console.error(`[Mock DB] Authorization failed: Requesting user ${updateData.authorId} not found.`);
+         throw new Error("Unauthorized");
     }
 
-    const { currentUserId, ...restUpdateData } = updateData; // Remove currentUserId before merging
+    if (originalPost.author.id !== updateData.authorId && requestingUser.role !== 'admin') {
+         console.error(`[Mock DB] Authorization failed: User ${updateData.authorId} (Role: ${requestingUser.role}) cannot update post owned by ${originalPost.author.id}`);
+         throw new Error("Unauthorized");
+    }
+    console.log(`[Mock DB] Authorization successful for user ${requestingUser.email} (Role: ${requestingUser.role}) to update post ${originalPost.id}.`);
 
-    const updatedPost = {
-        ...postToUpdate,
-        ...restUpdateData,
+    const updatedPost: Post = {
+        ...originalPost, // Start with original post
+        ...updateData, // Apply updates
+        author: originalPost.author, // CRITICAL: Keep original author object reference unless specifically changing author
         updatedAt: new Date(),
         // Re-generate excerpt if content changed and no explicit excerpt provided
-        excerpt: restUpdateData.content && !restUpdateData.excerpt ? restUpdateData.content.substring(0, 150) + '...' : restUpdateData.excerpt ?? postToUpdate.excerpt,
-        // Generate new slug ONLY if title changed
-        slug: restUpdateData.title && restUpdateData.title !== postToUpdate.title
-            ? generateSlug(restUpdateData.title, postToUpdate.id)
-            : postToUpdate.slug,
+        excerpt: (updateData.content && !updateData.excerpt)
+                    ? updateData.content.substring(0, 150) + '...'
+                    : updateData.excerpt ?? originalPost.excerpt,
     };
 
-    // Keep original author object unless specifically changed (not typical)
-    updatedPost.author = postToUpdate.author;
-
     posts[postIndex] = updatedPost;
-    console.log(`[Mock DB] Post updated: ${updatedPost.title} (New Slug: ${updatedPost.slug})`);
+    console.log(`[Mock DB] Post updated: "${updatedPost.title}" (ID: ${updatedPost.id})`);
 
-    // Fetch potentially updated author details (name might change etc)
-    const author = await findUserById(updatedPost.author.id);
-    return { ...updatedPost, author: createAuthorObject(author) };
+    // Fetch potentially updated author details (name might change etc) - though we keep original author ref above
+    // const author = await findUserById(updatedPost.author.id);
+    return { ...updatedPost /*, author: createAuthorObject(author) */ }; // Return updated copy
 };
 
-export const deletePost = async (slug: string, currentUserId: string): Promise<boolean> => {
-    console.log(`[Mock DB] Deleting post with slug: ${slug} by user: ${currentUserId}`);
-    await new Promise(res => setTimeout(res, 100)); // Simulate delay
+export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
+    console.log(`[Mock DB] Attempting delete for post slug: "${slug}" by userId: ${requestingUserId}`);
     const postIndex = posts.findIndex(p => p.slug === slug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for delete: ${slug}`);
         return false;
     }
 
-    // **Authorization Check**: Ensure the currentUserId matches the post's author OR user is admin
-    const currentUser = await findUserById(currentUserId);
-    const postAuthorId = posts[postIndex].author.id;
+    const postToDelete = posts[postIndex];
+    console.log(`[Mock DB] Found post "${postToDelete.title}" (ID: ${postToDelete.id}, Author: ${postToDelete.author.id}) for deletion.`);
 
-    if (postAuthorId !== currentUserId && currentUser?.role !== 'admin') {
-        console.error(`[Mock DB] Authorization failed: User ${currentUserId} (Role: ${currentUser?.role}) cannot delete post owned by ${postAuthorId}`);
-        throw new Error("Unauthorized: You don't have permission to delete this post.");
+    // **Authorization Check**: Ensure the authorId matches the post's author OR user is admin
+    const user = await findUserById(requestingUserId);
+    if (!user) {
+         console.error(`[Mock DB] Authorization failed: Requesting user ${requestingUserId} not found.`);
+         throw new Error("Unauthorized"); // User must exist to delete
+     }
+
+    const postAuthorId = postToDelete.author.id;
+
+    if (postAuthorId !== requestingUserId && user.role !== 'admin') {
+        console.error(`[Mock DB] Authorization failed: User ${requestingUserId} (Role: ${user.role}) cannot delete post owned by ${postAuthorId}`);
+        throw new Error("Unauthorized");
     }
+     console.log(`[Mock DB] Authorization successful for user ${user.email} (Role: ${user.role}) to delete post ${postToDelete.id}.`);
 
     posts.splice(postIndex, 1);
-    console.log(`[Mock DB] Post deleted: ${slug}`);
+    console.log(`[Mock DB] Post deleted: ${slug}. Remaining posts: ${posts.length}`);
     return true;
 };
 
 
 // --- Seed Data (Optional) ---
 const seedData = async () => {
-    // Check if admin already exists
-    const existingAdmin = await findUserByEmail('vedansh2821@gmail.com');
-    if (existingAdmin) {
-        console.log("[Mock DB] Admin user already exists, skipping seeding.");
-        return; // Don't re-seed if admin exists
-    }
+     console.log("[Mock DB] Seeding initial data...");
+     if (users.length > 0 || posts.length > 0) {
+          console.log("[Mock DB] Database already contains data. Skipping seed.");
+          return;
+      }
+     // Create admin user
+     try {
+         const adminPasswordHash = await bcrypt.hash('adminpassword', 10); // Use a secure password
+         await createUser({
+             email: 'vedansh2821@gmail.com',
+             name: 'Admin User',
+             role: 'admin',
+             hashedPassword: adminPasswordHash,
+             photoURL: 'https://i.pravatar.cc/150?u=admin',
+         });
+          console.log("[Mock DB] Admin user created.");
 
-    console.log("[Mock DB] Seeding initial data...");
+         // Create regular users
+         const user1PasswordHash = await bcrypt.hash('password123', 10);
+        const user1 = await createUser({
+            email: 'bob@example.com',
+            name: 'Bob',
+            role: 'user',
+            hashedPassword: user1PasswordHash,
+            photoURL: 'https://i.pravatar.cc/150?u=bob',
+        });
+         console.log("[Mock DB] User 'Bob' created.");
 
-    // Hash passwords
-    const adminPasswordHash = await bcrypt.hash('adminpassword', 10);
-    const bobPasswordHash = await bcrypt.hash('password123', 10);
-    const alicePasswordHash = await bcrypt.hash('password456', 10);
+        const user2PasswordHash = await bcrypt.hash('password456', 10);
+         const user2 = await createUser({
+            email: 'alice@example.com',
+            name: 'Alice',
+            role: 'user',
+            hashedPassword: user2PasswordHash,
+            photoURL: 'https://i.pravatar.cc/150?u=alice',
+        });
+          console.log("[Mock DB] User 'Alice' created.");
 
-    // Create admin user
-    const adminUser = await createUser({
-        email: 'vedansh2821@gmail.com',
-        name: 'Vedansh',
-        role: 'admin',
-        hashedPassword: adminPasswordHash,
-        photoURL: 'https://i.pravatar.cc/150?u=vedansh',
-    });
-    // Create regular users
-    const user1 = await createUser({
-        email: 'bob@example.com',
-        name: 'Bob The Builder',
-        role: 'user',
-        hashedPassword: bobPasswordHash,
-        photoURL: 'https://i.pravatar.cc/150?u=bob',
-    });
-    const user2 = await createUser({
-        email: 'alice@example.com',
-        name: 'Alice Wonderland',
-        role: 'user',
-        hashedPassword: alicePasswordHash,
-        photoURL: 'https://i.pravatar.cc/150?u=alice',
-    });
+         // Create posts
+          console.log("[Mock DB] Creating posts...");
+         await createPost({
+             title: "First Post by Bob",
+             content: "<p>This is <strong>Bob's</strong> first blog post content. It talks about technology.</p><h2>Subtitle</h2><p>More details here.</p>",
+             category: "Technology",
+             authorId: user1.id,
+             excerpt: "This is Bob's first blog post content...",
+             tags: ["intro", "tech"],
+         });
+         await createPost({
+              title: "Alice's Thoughts on Lifestyle",
+              content: "<p>Exploring minimalism and <em>intentional living</em>. It's about focusing on what matters.</p><ul><li>Declutter</li><li>Prioritize</li></ul>",
+              category: "Lifestyle",
+              authorId: user2.id,
+              excerpt: "Exploring minimalism and intentional living...",
+               tags: ["minimalism", "life"],
+          });
+           await createPost({
+               title: "Another Tech Update by Bob",
+               content: "<p>More content about technology trends, including AI and Web3.</p>",
+               category: "Technology",
+               authorId: user1.id,
+                excerpt: "More content about technology trends...",
+                tags: ["ai", "web3", "tech"],
+           });
+             await createPost({
+                 title: "Healthy Habits for Programmers",
+                 content: "<p>Sitting all day? Here are some tips for staying healthy. Remember to take breaks!</p>",
+                 category: "Health",
+                 authorId: user2.id, // Alice writes about health too
+                 excerpt: "Sitting all day? Here are some tips...",
+                 tags: ["health", "programming", "wellness"],
+             });
+         console.log("[Mock DB] Seed data creation complete.");
+         console.log("[Mock DB] Initial Posts:", posts.map(p => ({ slug: p.slug, title: p.title })));
+     } catch (error) {
+          console.error("[Mock DB] Error during seeding:", error);
+      }
+ };
 
-    // Create posts
-    await createPost({
-        title: "The Future of AI",
-        content: "<p>Artificial intelligence is rapidly evolving. In this post, we explore the potential breakthroughs and ethical considerations surrounding AI development.</p> <p>From machine learning advancements to the quest for artificial general intelligence (AGI), the landscape is constantly shifting.</p> <h2>Key Areas</h2> <ul><li>Natural Language Processing</li><li>Computer Vision</li><li>Reinforcement Learning</li></ul>",
-        category: "Technology",
-        authorId: adminUser.id, // Admin post
-        imageUrl: 'https://picsum.photos/seed/ai-future/1200/600',
-        tags: ['AI', 'Machine Learning', 'Future Tech'],
-        excerpt: "Exploring the potential breakthroughs and ethical considerations surrounding AI development..."
-    });
-    await createPost({
-        title: "Minimalist Living Guide",
-        content: "<p>Discover the benefits of minimalism and how decluttering your life can lead to greater focus and happiness.</p><p>We'll cover practical steps to start your minimalist journey, from your wardrobe to your digital life.</p>",
-        category: "Lifestyle",
-        authorId: user2.id, // Alice's post
-         imageUrl: 'https://picsum.photos/seed/minimalism/1200/600',
-         tags: ['Minimalism', 'Simple Living', 'Wellbeing'],
-         excerpt: "Discover the benefits of minimalism and how decluttering your life can lead to greater focus..."
-    });
-    await createPost({
-        title: "10 Healthy Habits for a Better Life",
-        content: "<p>Incorporating small, consistent healthy habits can make a big difference. Learn 10 actionable tips you can start today.</p>",
-        category: "Health",
-        authorId: user1.id, // Bob's post
-         imageUrl: 'https://picsum.photos/seed/healthyhabits/1200/600',
-         tags: ['Health', 'Wellness', 'Habits'],
-         excerpt: "Learn 10 actionable healthy habits you can start implementing today for a better life..."
-    });
-     await createPost({
-        title: "Exploring the Swiss Alps",
-        content: "<p>A breathtaking journey through the mountains, lakes, and charming villages of Switzerland.</p>",
-        category: "Travel",
-        authorId: user2.id, // Alice's post
-         imageUrl: 'https://picsum.photos/seed/switzerland/1200/600',
-         tags: ['Travel', 'Switzerland', 'Mountains', 'Europe'],
-         excerpt: "A breathtaking journey through the mountains, lakes, and charming villages of Switzerland..."
-    });
-      await createPost({
-        title: "Introduction to React Server Components",
-        content: "<p>Understanding the new paradigm shift in React development with Server Components.</p>",
-        category: "Technology",
-        authorId: adminUser.id, // Admin post
-         imageUrl: 'https://picsum.photos/seed/react-rsc/1200/600',
-         tags: ['React', 'Web Development', 'Server Components', 'Next.js'],
-         excerpt: "Understanding the new paradigm shift in React development with Server Components..."
-    });
-    // Add more posts as needed...
-
-    console.log("[Mock DB] Seed data creation complete.");
-};
-
-// --- Initialize Seed Data ---
-// Check if users array is empty before seeding
-if (users.length === 0 && process.env.NODE_ENV !== 'production') {
-    seedData().catch(error => console.error("[Mock DB] Error seeding data:", error));
-}
+ // Only seed in development if DB is empty
+ if (process.env.NODE_ENV !== 'production' && users.length === 0) {
+     seedData();
+ }
+ else {
+     console.log("[Mock DB] Initial Posts (already seeded or production):", posts.map(p => ({ slug: p.slug, title: p.title })));
+ }
