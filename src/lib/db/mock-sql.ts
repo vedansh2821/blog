@@ -107,7 +107,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
         name: user.name || user.email || 'Unnamed Author',
         slug: user.id, // Use user ID as author slug for simplicity
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
-        bio: `Bio for ${user.name || user.email}`, // Simple bio
+        bio: `Posts by ${user.name || user.email}`, // Simple bio
         joinedAt: new Date(user.joinedAt), // Include joinedAt
     };
 };
@@ -318,11 +318,12 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
 
 // --- Seed Data (Optional) ---
 const seedData = async () => {
-     if (users.length > 0 || posts.length > 0) {
-       console.log("[Mock DB] Database already contains data. Skipping seed.");
-       return;
-     }
-     console.log("[Mock DB] Seeding initial data...");
+     // Clear existing data before seeding
+     users.length = 0;
+     posts.length = 0;
+     userIdCounter = 1;
+     postIdCounter = 1;
+     console.log("[Mock DB] Cleared existing data. Seeding initial data...");
 
      try {
        // Create admin user
@@ -332,79 +333,95 @@ const seedData = async () => {
            name: 'Vedansh V.',
            role: 'admin',
            hashedPassword: adminPasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=vedansh2821',
+           photoURL: 'https://i.pravatar.cc/150?u=vedansh', // Updated avatar seed
            dob: '1990-01-01',
            phone: '123-456-7890',
        });
 
        // Create regular users
-       const bobPasswordHash = await bcrypt.hash('password123', 10);
+       const aayushiPasswordHash = await bcrypt.hash('password123', 10);
        const user1 = await createUser({
-           email: 'bob@example.com',
-           name: 'Bob The Blogger',
+           email: 'aayushi@example.com',
+           name: 'Aayushi P.',
            role: 'user',
-           hashedPassword: bobPasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=bob',
+           hashedPassword: aayushiPasswordHash,
+           photoURL: 'https://i.pravatar.cc/150?u=aayushi', // Updated avatar seed
            dob: '1995-05-15',
            phone: null,
        });
 
-       const alicePasswordHash = await bcrypt.hash('password456', 10);
+       const alexPasswordHash = await bcrypt.hash('password456', 10);
        const user2 = await createUser({
-           email: 'alice@example.com',
-           name: 'Alice Writes',
+           email: 'alex@example.com',
+           name: 'Alex G.',
            role: 'user',
-           hashedPassword: alicePasswordHash,
-           photoURL: 'https://i.pravatar.cc/150?u=alice',
+           hashedPassword: alexPasswordHash,
+           photoURL: 'https://i.pravatar.cc/150?u=alex', // Updated avatar seed
            dob: null,
            phone: '987-654-3210',
        });
 
         // Create posts (use addUniqueSuffix: false for seeding to get predictable slugs)
         await createPost({
-            title: "First Post by Bob",
-            content: "<p>This is Bob's <strong>first</strong> blog post content. Exploring the world of tech!</p><ul><li>React</li><li>Next.js</li></ul>",
+            title: "Mastering TypeScript for Modern Web Development",
+            content: "<p>TypeScript has become an essential tool for building robust and scalable web applications. This post explores key concepts like static typing, interfaces, generics, and decorators.</p><h2>Why TypeScript?</h2><ul><li>Improved code quality and maintainability.</li><li>Early error detection during development.</li><li>Enhanced developer experience with autocompletion and refactoring tools.</li></ul><p>We'll dive into practical examples using React and Node.js.</p>",
             category: "Technology",
-            authorId: user1.id,
-            tags: ["getting started", "tech"],
-            excerpt: "Bob's first foray into the tech blogging world."
+            authorId: adminUser.id, // Vedansh
+            tags: ["typescript", "web development", "javascript", "react"],
+            excerpt: "Explore the benefits and core features of TypeScript for building scalable and maintainable web applications.",
+            imageUrl: `https://picsum.photos/seed/typescript-mastery/1200/600`
         }, false);
 
         await createPost({
-             title: "Alice's Thoughts on Lifestyle",
-             content: "<p>Exploring minimalism and intentional living. How decluttering your space can declutter your mind.</p><p>Source: <a href='#'>Minimalism Documentary</a></p>",
+             title: "Sustainable Living: Simple Steps for a Greener Life",
+             content: "<p>Making sustainable choices doesn't have to be overwhelming. This article provides actionable tips for reducing your environmental impact.</p><h3>Easy Swaps:</h3><ol><li>Reusable shopping bags</li><li>Water bottles and coffee cups</li><li>Switching to LED bulbs</li><li>Reducing meat consumption</li></ol><p>Every small step contributes to a healthier planet.</p>",
              category: "Lifestyle",
-             authorId: user2.id,
-             tags: ["minimalism", "wellbeing"],
-             excerpt: "Alice shares her journey into minimalism and intentional living."
+             authorId: user1.id, // Aayushi
+             tags: ["sustainability", "eco-friendly", "minimalism", "green living"],
+             excerpt: "Discover simple, actionable steps towards a more sustainable and environmentally friendly lifestyle.",
+              imageUrl: `https://picsum.photos/seed/sustainable-living/1200/600`
          }, false);
 
           await createPost({
-              title: "Another Tech Update by Bob",
-              content: "<p>More content about technology trends. Let's talk about WebAssembly.</p><pre><code class='language-javascript'>console.log('Hello Wasm!');</code></pre>",
-              category: "Technology",
-              authorId: user1.id,
-              tags: ["webassembly", "performance"],
-              excerpt: "Bob discusses the latest advancements in WebAssembly."
+              title: "The Rise of Remote Work: Challenges and Opportunities",
+              content: "<p>Remote work is transforming the professional landscape. We discuss the benefits, drawbacks, and tools needed for successful remote collaboration.</p><blockquote>\"The ability to work from anywhere is a game-changer, but requires discipline and effective communication.\"</blockquote><p>Adapting to this new normal is key for both employees and employers.</p>",
+              category: "Technology", // Or could be Lifestyle/Business
+              authorId: user2.id, // Alex
+              tags: ["remote work", "productivity", "future of work", "collaboration"],
+              excerpt: "An analysis of the remote work trend, covering its challenges, benefits, and tools for success.",
+              imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`
           }, false);
 
          await createPost({
-           title: "Healthy Habits for Developers",
-           content: "<p>Staying healthy while coding long hours. Tips for posture, exercise, and diet.</p>",
+           title: "Mindfulness Meditation: A Beginner's Guide",
+           content: "<p>Learn the basics of mindfulness meditation and how it can help reduce stress and improve focus.</p><h4>Getting Started:</h4><ul><li>Find a quiet space.</li><li>Sit comfortably.</li><li>Focus on your breath.</li><li>Gently redirect your attention when your mind wanders.</li></ul><p>Even 5-10 minutes daily can make a difference.</p>",
            category: "Health",
-           authorId: adminUser.id, // Admin posts too
-           tags: ["health", "developer", "wellness"],
-           excerpt: "Essential health tips tailored for software developers."
+           authorId: user1.id, // Aayushi
+           tags: ["meditation", "mindfulness", "wellness", "mental health", "stress relief"],
+           excerpt: "A simple guide for beginners to start practicing mindfulness meditation for reduced stress and improved focus.",
+           imageUrl: `https://picsum.photos/seed/mindfulness-guide/1200/600`
          }, false);
 
           await createPost({
-             title: "Travel Guide: Hidden Gems",
-             content: "<p>Discovering lesser-known travel destinations for your next adventure.</p><img src='https://picsum.photos/seed/travelguide/800/400' alt='Travel destination' />",
+             title: "Exploring Southeast Asia: A Backpacker's Dream",
+             content: "<p>Southeast Asia offers incredible experiences for budget travelers. From vibrant cities to stunning beaches, here's a look at must-visit destinations.</p><img src='https://picsum.photos/seed/sea-travel/800/400' alt='Southeast Asia Landscape' /><p>Tips on accommodation, food, and navigating different cultures.</p>",
              category: "Travel",
-             authorId: user2.id,
-             tags: ["travel", "adventure", "explore"],
-             excerpt: "Alice uncovers some hidden gems for intrepid travelers."
+             authorId: user2.id, // Alex
+             tags: ["travel", "backpacking", "southeast asia", "budget travel", "adventure"],
+             excerpt: "A backpacker's guide to exploring the diverse and beautiful countries of Southeast Asia.",
+              imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`
           }, false);
+
+          await createPost({
+             title: "Introduction to GraphQL vs REST APIs",
+             content: "<p>Comparing GraphQL and REST architectural styles for building APIs. Understanding the pros and cons of each approach.</p><h2>Key Differences:</h2><ul><li>Data Fetching: GraphQL allows clients to request exactly what they need.</li><li>Endpoints: REST typically uses multiple endpoints, while GraphQL uses a single endpoint.</li><li>Schema & Typing: GraphQL has a strong type system.</li></ul><p>Which one is right for your next project?</p>",
+             category: "Technology",
+             authorId: adminUser.id, // Vedansh
+             tags: ["graphql", "rest", "api", "web development", "architecture"],
+             excerpt: "A comparison of GraphQL and REST APIs, highlighting their key differences, advantages, and disadvantages.",
+              imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`
+          }, false);
+
 
         console.log("[Mock DB] Seed data creation finished.");
         console.log("[Mock DB] Users:", users.map(u => ({id: u.id, email: u.email, role: u.role, joinedAt: u.joinedAt})));
@@ -416,7 +433,9 @@ const seedData = async () => {
       }
  };
 
- // Initialize seed data in development if DB is empty
- if (process.env.NODE_ENV !== 'production' && users.length === 0) {
+ // Initialize seed data in development if DB is empty (or always re-seed in dev)
+ // Change the condition if you want to re-seed every time the server restarts in dev
+ // if (process.env.NODE_ENV !== 'production' && users.length === 0) {
+ if (process.env.NODE_ENV !== 'production') { // Re-seed every time in development
      seedData();
  }
