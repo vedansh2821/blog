@@ -1,4 +1,5 @@
 
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -134,7 +135,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
 };
 
 
-// Updated slug generation: only adds suffix if collision detected OR addUniqueSuffix=true
+// Refined slug generation
 const generateSlug = (title: string, addUniqueSuffix: boolean = false): string => {
     let baseSlug = title
         .toLowerCase()
@@ -150,53 +151,42 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
 
     let finalSlug = baseSlug;
     let counter = 1;
-    let needsSuffixCheck = true; // Start by checking if base slug exists
+    let collisionDetected = false;
 
-    // Keep checking for collision and appending counter until a unique slug is found
-    while (needsSuffixCheck) {
-        const slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
+    // Check if the base slug itself already exists
+    let slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
+    collisionDetected = slugExists; // Mark if initial collision
 
-        if (slugExists) {
-            // Collision found, append counter and check again in the next iteration
+    // If collision or explicit suffix needed, start checking with suffixes
+    if (slugExists || addUniqueSuffix) {
+        // Keep checking for collision and appending counter until a unique slug is found
+        while (true) {
             finalSlug = `${baseSlug}-${counter}`;
+            slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
+            if (!slugExists) {
+                break; // Found a unique slug with suffix
+            }
             counter++;
-        } else {
-            // No collision, this slug is unique
-            needsSuffixCheck = false;
+             // Safety break for extreme cases
+             if (counter > 100) {
+                console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
+                finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
+                break;
+            }
         }
-
-        // Safety break for extreme cases
-        if (counter > 100) {
-            console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
-            finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
-            break;
-        }
+        console.log(`[Mock DB] Collision detected or suffix forced. Generated slug with suffix: ${finalSlug}`);
+    } else {
+        console.log(`[Mock DB] Base slug "${finalSlug}" is unique and suffix not forced.`);
     }
 
-    // If addUniqueSuffix was explicitly true and no collision was detected initially,
-    // we still need to add a suffix (e.g., for API-created posts).
-    // Use the counter value (which would be 1 if no collision was found).
-    if (addUniqueSuffix && counter === 1 && posts.some(p => p.slug.toLowerCase() === baseSlug.toLowerCase())) {
-       // This condition handles the case where the base slug already exists,
-       // but the while loop exited because the FIRST attempt (baseSlug-1) was unique.
-       // We should use the first available suffix (baseSlug-1).
-       finalSlug = `${baseSlug}-${counter}`; // This will be baseSlug-1
-    } else if (addUniqueSuffix && counter === 1 && !posts.some(p => p.slug.toLowerCase() === baseSlug.toLowerCase())) {
-        // If addUniqueSuffix is true and the base slug was already unique, we still might want a suffix
-        // depending on requirements. For simplicity, let's NOT add one here if base is unique.
-        // If you ALWAYS want a suffix with addUniqueSuffix=true, uncomment the next line.
-        // finalSlug = `${baseSlug}-${counter}`;
-    }
-
-
-    console.log(`[Mock DB] Generated slug: ${finalSlug} for title: "${title}" (addUniqueSuffix: ${addUniqueSuffix})`);
+    console.log(`[Mock DB] Final generated slug: ${finalSlug} for title: "${title}" (addUniqueSuffix: ${addUniqueSuffix})`);
     return finalSlug;
 };
 
 
 export const createPost = async (
     postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'> & { authorId: string, content?: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
-    addUniqueSuffix: boolean = false // Default to false (for seeding)
+    addUniqueSuffix: boolean = true // Default to true for API calls
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
     if (!author) {
@@ -205,7 +195,7 @@ export const createPost = async (
 
     // Construct content if structured fields are provided
      let constructedContent = postData.content || ''; // Use provided content as default
-     if (!constructedContent && (postData.heading || postData.subheadings || postData.paragraphs)) {
+     if (!constructedContent && (postData.heading || (postData.subheadings && postData.subheadings.length > 0) || (postData.paragraphs && postData.paragraphs.length > 0))) {
          constructedContent = ''; // Start fresh if structure exists but content doesn't
          if (postData.heading) {
              constructedContent += `<h1 class="text-2xl font-bold mb-4">${postData.heading}</h1>`;
@@ -237,7 +227,7 @@ export const createPost = async (
     const now = new Date();
     const newPost: Post = {
         id: `post-${postIdCounter++}`,
-        slug: generateSlug(postData.title, addUniqueSuffix),
+        slug: generateSlug(postData.title, addUniqueSuffix), // Use updated slug function
         title: postData.title,
         content: constructedContent, // Use constructed or provided content
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
@@ -266,17 +256,32 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         console.warn(`[Mock DB] findPostBySlug called with invalid slug: ${slug}`);
         return null;
     }
-    console.log(`[Mock DB] Finding post by slug (case-insensitive): "${lowerCaseSlug}"`);
+    console.log(`[Mock DB] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
+    console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
     const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
+
     if (!post) {
         console.warn(`[Mock DB] Post with slug "${lowerCaseSlug}" not found.`);
         return null;
     }
-     console.log(`[Mock DB] Found post with ID: ${post.id} for slug: ${slug}`);
 
-    // Simulate fetching author details again
+    console.log(`[Mock DB] Found post: ID ${post.id}, Title: "${post.title}" for slug: "${slug}"`);
+
+    // Simulate fetching author details again (important for up-to-date info)
     const author = await findUserById(post.author.id);
+    if (!author) {
+        console.warn(`[Mock DB] Author with ID ${post.author.id} not found for post ${post.id}`);
+        // Decide how to handle - return post with unknown author or null?
+        // Returning with unknown author for now.
+         return {
+            ...post,
+            author: createAuthorObject(null), // Use unknown author
+            publishedAt: new Date(post.publishedAt),
+            updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+        };
+    }
+
     return {
         ...post,
         author: createAuthorObject(author),
@@ -350,7 +355,7 @@ export const updatePost = async (
         console.warn(`[Mock DB] updatePost called with invalid slug: ${slug}`);
         return null;
     }
-    console.log(`[Mock DB] Updating post with slug: ${lowerCaseSlug}`);
+    console.log(`[Mock DB] Attempting to update post with slug: ${lowerCaseSlug}`);
 
     const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
@@ -369,19 +374,24 @@ export const updatePost = async (
           console.error(`[Mock DB] Authorization failed: User ${requestingUser.id} (Role: ${requestingUser.role}) cannot update post owned by ${postOwnerId}`);
           throw new Error("Unauthorized");
      }
+    console.log(`[Mock DB] User ${requestingUser.id} authorized to update post ${slug}.`);
 
     const originalPost = posts[postIndex];
 
-    // Generate new slug ONLY if title changed
+    // Generate new slug ONLY if title changed and new title provided
     const newSlug = (updateData.title && updateData.title !== originalPost.title)
                     ? generateSlug(updateData.title, true) // Force unique suffix if title changes
                     : originalPost.slug;
+    if (newSlug !== originalPost.slug) {
+        console.log(`[Mock DB] Title changed, generated new slug: ${newSlug}`);
+    }
 
     // Construct updated content if structured fields are changing
     let updatedContent = updateData.content ?? originalPost.content; // Use new content if provided
      const hasStructureUpdate = updateData.heading !== undefined || updateData.subheadings !== undefined || updateData.paragraphs !== undefined;
 
      if (hasStructureUpdate) {
+         console.log(`[Mock DB] Structured content update detected for post ${slug}.`);
         const currentHeading = updateData.heading ?? originalPost.heading;
         const currentSubheadings = updateData.subheadings ?? originalPost.subheadings;
         const currentParagraphs = updateData.paragraphs ?? originalPost.paragraphs;
@@ -407,7 +417,8 @@ export const updatePost = async (
          }
          // If only structured data was updated, but no actual content generated, keep original content?
          // Or should it default to empty? Let's keep original if new construction is empty.
-         if (!updatedContent.trim()) {
+         if (!updatedContent.trim() && originalPost.content) {
+             console.log(`[Mock DB] Reconstructed content is empty, reverting to original content for post ${slug}.`);
              updatedContent = originalPost.content;
          }
      }
@@ -646,4 +657,3 @@ const seedData = async () => {
  if (process.env.NODE_ENV !== 'production') { // Re-seed every time in development
      seedData();
  }
-
