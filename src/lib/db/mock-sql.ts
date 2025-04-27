@@ -154,8 +154,8 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
 
     let finalSlug = baseSlug;
     let counter = 1;
+    // Check existing slugs (case-insensitive)
     let slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
-    let suffixAdded = false;
 
     // If collision or explicit suffix needed, start checking with suffixes
     if (slugExists || addUniqueSuffix) {
@@ -165,7 +165,6 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
             slugExists = posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase());
             // console.log(`[Mock DB] Slug Check: Testing "${finalSlug}". Exists=${slugExists}`);
             if (!slugExists) {
-                suffixAdded = true; // Mark that a suffix was added
                 break; // Found a unique slug with suffix
             }
             counter++;
@@ -173,7 +172,6 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
              if (counter > 100) {
                 console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
                 finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
-                suffixAdded = true;
                 break;
             }
         }
@@ -189,7 +187,7 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
 
 export const createPost = async (
     postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'> & { authorId: string, content?: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
-    addUniqueSuffix: boolean = true // Default to true for API calls
+    addUniqueSuffix: boolean = false // *** TEMPORARY CHANGE: Default to false to simplify debugging ***
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
     if (!author) {
@@ -231,9 +229,10 @@ export const createPost = async (
 
 
     const now = new Date();
+    const generatedSlug = generateSlug(postData.title, addUniqueSuffix); // Get generated slug
     const newPost: Post = {
         id: `post-${postIdCounter++}`,
-        slug: generateSlug(postData.title, addUniqueSuffix), // Use updated slug function
+        slug: generatedSlug, // Use the generated slug
         title: postData.title,
         content: constructedContent, // Use constructed or provided content
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
@@ -251,7 +250,7 @@ export const createPost = async (
         subheadings: postData.subheadings || [], // Store raw subheadings
         paragraphs: postData.paragraphs || [], // Store raw paragraphs
     };
-    console.log(`[Mock DB createPost] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
+    console.log(`[Mock DB createPost] Creating post: "${newPost.title}" (Slug: "${newPost.slug}") by ${newPost.author.name}`);
     posts.push(newPost);
     // Log posts array AFTER adding new one
     // console.log("[Mock DB createPost] Posts array AFTER adding:", posts.map(p => ({ id: p.id, slug: p.slug, title: p.title })));
@@ -265,7 +264,7 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
-    // console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
+    console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`); // Log available slugs
 
     const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
 
@@ -682,4 +681,5 @@ const seedData = async () => {
  if (!isSeeded) {
      seedData();
  }
+
 
