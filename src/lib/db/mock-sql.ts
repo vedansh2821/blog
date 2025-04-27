@@ -36,10 +36,18 @@ export const findUserByEmail = async (email: string): Promise<MockUser | null> =
 };
 
 export const findUserById = async (id: string): Promise<MockUser | null> => {
-    console.log(`[Mock DB] Finding user by ID: ${id}`);
+    console.log(`[Mock DB findUserById] Finding user by ID: "${id}"`);
+    const availableUserIds = users.map(u => u.id); // Get list of current user IDs
+    console.log(`[Mock DB findUserById] Available user IDs: [${availableUserIds.join(', ')}]`); // Log available IDs
     const user = users.find(u => u.id === id);
-     // Ensure joinedAt is returned as a Date object
-    return user ? { ...user, joinedAt: new Date(user.joinedAt) } : null;
+    if (user) {
+        console.log(`[Mock DB findUserById] User found for ID "${id}".`);
+        // Ensure joinedAt is returned as a Date object
+        return { ...user, joinedAt: new Date(user.joinedAt) };
+    } else {
+        console.warn(`[Mock DB findUserById] User NOT found for ID "${id}".`);
+        return null;
+    }
 };
 
 // Add function to get all users (excluding password hashes)
@@ -285,6 +293,7 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB findPostBySlug] Searching for post with slug (trimmed, case-insensitive): "${trimmedSlug}"`);
+    console.log(`[Mock DB findPostBySlug] Available post slugs: [${posts.map(p => p.slug).join(', ')}]`); // Log available slugs
 
     const post = posts.find(p => p.slug.trim().toLowerCase() === trimmedSlug);
 
@@ -695,4 +704,3 @@ const seedData = async () => {
  if (!isSeeded) {
      seedData();
  }
-

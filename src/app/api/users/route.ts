@@ -14,9 +14,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized: Missing user identification.' }, { status: 401 });
     }
 
+    // Log the ID received from the header
+    console.log(`[API GET /api/users] Received X-Mock-User-ID: "${requestingUserId}"`);
+
     const requestingUser = await findUserById(requestingUserId);
     if (!requestingUser) {
-         console.warn(`[API GET /api/users] Unauthorized: Requesting user ${requestingUserId} not found.`);
+         console.warn(`[API GET /api/users] Unauthorized: Requesting user ${requestingUserId} not found in DB.`);
          return NextResponse.json({ error: 'Unauthorized: User not found.' }, { status: 401 });
     }
 
@@ -28,7 +31,8 @@ export async function GET(request: Request) {
     console.log(`[API GET /api/users] Authorized admin request from ${requestingUser.email} (${requestingUser.id})`);
 
     // --- Fetch All Users (function internally checks auth again, which is slightly redundant but ok) ---
-    const users = await getAllUsers(requestingUserId); // This returns users WITHOUT password hashes
+    // Pass requestingUserId again, although the check above already confirmed admin status
+    const users = await getAllUsers(requestingUserId);
 
     // --- Format Response ---
     // Ensure dates are ISO strings and structure matches AuthUser (excluding password)
