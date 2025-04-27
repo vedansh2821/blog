@@ -24,6 +24,7 @@ const categories = [
   { value: 'Health', label: 'Health' },
   { value: 'Travel', label: 'Travel' },
   { value: 'Love', label: 'Love' },
+  { value: 'Others', label: 'Others' }, // Added Others
 ];
 
 // API fetching function for blogs page
@@ -90,7 +91,6 @@ export default function BlogsPage() {
   const [usePagination, setUsePagination] = useState(false); // Default to infinite scroll
   const [totalPages, setTotalPages] = useState(1);
   const observer = useRef<IntersectionObserver>();
-  const isInitialMount = useRef(true);
   const { toast } = useToast();
   const router = useRouter();
   const { currentUser } = useAuth();
@@ -128,23 +128,16 @@ export default function BlogsPage() {
      } finally {
          setLoading(false);
          setLoadingMore(false);
-         console.log(`[BlogsPage] Finished loading: page=${pageNum}, append=${append}`);
+         console.log(`[BlogsPage] Finished loading: page=${pageNum}, category=${category}, append=${append}`);
      }
   }, [toast]); // Include toast in dependencies
 
   // Initial load and changes in category/pagination mode
   useEffect(() => {
-     // Prevent initial double load on strict mode
-     if (isInitialMount.current) {
-         isInitialMount.current = false;
-         console.log("[BlogsPage] Initial mount, loading first page.");
-         loadPosts(0, selectedCategory, usePagination, false);
-         return;
-     }
-     console.log(`[BlogsPage] Dependency changed (category or pagination mode), loading page 0. Category: ${selectedCategory}, Pagination: ${usePagination}`);
-     // Reload data from page 0 when category or pagination mode changes
+     console.log(`[BlogsPage] Effect triggered. Category: ${selectedCategory}, Pagination: ${usePagination}`);
+     // Reload data from page 0 when component mounts or when category/pagination mode changes
      loadPosts(0, selectedCategory, usePagination, false);
-  }, [selectedCategory, usePagination, loadPosts]);
+  }, [selectedCategory, usePagination, loadPosts]); // Reload when these dependencies change
 
 
   const handleCategoryChange = (value: string) => {

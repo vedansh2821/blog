@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { Loader2, PlusCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth/authContext';
@@ -88,6 +88,8 @@ export default function CreatePostPage() {
                 requestingUserId: currentUser.id, // Include the user ID for the API
             };
 
+            console.log("[Create Post] Sending data to API:", postData);
+
             const response = await fetch('/api/posts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -95,6 +97,8 @@ export default function CreatePostPage() {
             });
 
             const result = await response.json();
+            console.log("[Create Post] API response:", result);
+
 
             if (!response.ok) {
                 throw new Error(result.error || 'Failed to create post');
@@ -104,8 +108,8 @@ export default function CreatePostPage() {
                 title: 'Post Created!',
                 description: `Your post "${result.title}" has been published.`,
             });
-            // Redirect to the newly created post page
-            router.push(`/blogs/${result.slug}`);
+            // Redirect to the main blogs page to see the new post in the list
+            router.push(`/blogs`);
 
         } catch (error) {
             console.error('Failed to create post:', error);
@@ -146,8 +150,11 @@ export default function CreatePostPage() {
         const file = e.target.files?.[0];
         if (file) {
             setSelectedImage(file);
-            // Set image URL to empty string, to prevent validation error for URL format
+            // TODO: Implement image upload logic here
+            // For now, just clear the imageUrl input if a file is selected
             setValue('imageUrl', '', { shouldValidate: true });
+            toast({title: "Image Selected", description: "Image upload functionality not yet implemented. URL field cleared."})
+
         } else {
             setSelectedImage(null);
         }
@@ -234,27 +241,35 @@ export default function CreatePostPage() {
                         </div>
 
                         <div>
-                            <Label htmlFor="imageUrl">Image</Label>
-                            {/* Image Upload */}
-                            <Input
-                                id="imageUrl"
-                                type="file"
-                                accept="image/*"
-                                disabled={isSubmitting}
-                                onChange={handleImageChange}
-                            />
-                            {/* Display Selected Image */}
-                            {selectedImage && (
-                                <div className="mt-2">
-                                    <img
-                                        src={URL.createObjectURL(selectedImage)}
-                                        alt="Selected"
-                                        className="max-h-40 rounded-md shadow-sm"
-                                    />
-                                </div>
-                            )}
-                            {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
-                        </div>
+                             <Label htmlFor="image">Image</Label>
+                             {/* Image Upload */}
+                             <Input
+                                 id="image"
+                                 type="file"
+                                 accept="image/*"
+                                 disabled={isSubmitting}
+                                 onChange={handleImageChange}
+                             />
+                             {/* Display Selected Image Preview */}
+                             {selectedImage && (
+                                 <div className="mt-2">
+                                     <img
+                                         src={URL.createObjectURL(selectedImage)}
+                                         alt="Selected preview"
+                                         className="max-h-40 rounded-md shadow-sm object-cover"
+                                     />
+                                 </div>
+                             )}
+                             {/* TODO: Add Image URL input as fallback or if upload fails */}
+                              <Input
+                                 id="imageUrl"
+                                 {...register('imageUrl')}
+                                 placeholder="Or paste an image URL"
+                                 className="mt-2"
+                                 disabled={isSubmitting || !!selectedImage} // Disable if file selected
+                             />
+                             {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
+                         </div>
 
                         <div>
                             <Label htmlFor="tags">Tags (Optional, comma-separated)</Label>
