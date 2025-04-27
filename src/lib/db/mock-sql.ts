@@ -83,19 +83,13 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
         counter++;
     }
 
-    // Optionally add timestamp suffix if requested AND no collision forced a counter suffix
-    // This part is less useful now, counter suffix is better for uniqueness
-    // if (addUniqueSuffix && !needsSuffix) { // Example: Keep if you want timestamp for API posts
-    //     finalSlug += `-${Date.now() % 1000}`;
-    // }
-
     return finalSlug;
 };
 
 
 // Modify createPost to accept the addUniqueSuffix parameter
 export const createPost = async (
-    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views'> & { authorId: string },
+    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount'> & { authorId: string },
     addUniqueSuffix: boolean = false // Default to false (for seeding)
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
@@ -119,6 +113,7 @@ export const createPost = async (
         excerpt: postData.excerpt || postData.content.substring(0, 150) + '...',
         tags: postData.tags || [],
         rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Random rating 3.0-5.0
+        ratingCount: Math.floor(Math.random() * 50) + 5, // Add rating count
     };
     console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
@@ -181,10 +176,10 @@ export const findPosts = async (options: {
     // Ensure author details are up-to-date for the returned page
     const postsWithAuthors = await Promise.all(postsForPage.map(async (post) => {
         // Ensure dates are Date objects
-        post.publishedAt = new Date(post.publishedAt);
-        if (post.updatedAt) post.updatedAt = new Date(post.updatedAt);
+        const pubDate = new Date(post.publishedAt);
+        const updDate = post.updatedAt ? new Date(post.updatedAt) : undefined;
         const author = await findUserById(post.author.id);
-        return { ...post, author: createAuthorObject(author) };
+        return { ...post, publishedAt: pubDate, updatedAt: updDate, author: createAuthorObject(author) };
     }));
 
     return {
@@ -197,7 +192,7 @@ export const findPosts = async (options: {
 };
 
 
-export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating'>> & { requestingUserId: string }): Promise<Post | null> => {
+export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount'>> & { requestingUserId: string }): Promise<Post | null> => {
     console.log(`[Mock DB] Updating post with slug: ${slug}`);
     const postIndex = posts.findIndex(p => p.slug === slug);
     if (postIndex === -1) {
@@ -363,4 +358,3 @@ const seedData = async () => {
  if (process.env.NODE_ENV !== 'production' && users.length === 0) {
      seedData();
  }
-```
