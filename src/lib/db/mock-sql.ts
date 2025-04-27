@@ -41,6 +41,17 @@ export const findUserById = async (id: string): Promise<MockUser | null> => {
     return user ? { ...user, joinedAt: new Date(user.joinedAt) } : null;
 };
 
+// Add function to get all users (excluding password hashes)
+export const getAllUsers = async (): Promise<Omit<MockUser, 'hashedPassword'>[]> => {
+    console.log('[Mock DB] Getting all users.');
+    // Return copies of users without the password hash
+    return users.map(user => {
+        const { hashedPassword, ...userWithoutHash } = user;
+        return { ...userWithoutHash, joinedAt: new Date(userWithoutHash.joinedAt) }; // Ensure date object
+    });
+};
+
+
 export const createUser = async (userData: Omit<MockUser, 'id' | 'joinedAt'>): Promise<MockUser> => {
     const newUser: MockUser = {
         ...userData,
