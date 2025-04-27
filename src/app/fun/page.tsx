@@ -2,12 +2,14 @@
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Gamepad2 } from 'lucide-react';
+import { Gamepad2, Construction } from 'lucide-react'; // Added Construction icon
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
 
 // Example Placeholder Game Card Component
-const GameCard = ({ title, description, href, icon }: { title: string; description: string; href: string; icon: React.ReactNode }) => (
-  <Card className="hover:shadow-lg transition-shadow flex flex-col">
+const GameCard = ({ title, description, href, icon, disabled = false }: { title: string; description: string; href: string; icon: React.ReactNode; disabled?: boolean }) => (
+  <Card className={cn("hover:shadow-lg transition-shadow flex flex-col", disabled ? "opacity-50 pointer-events-none" : "")}>
     <CardHeader>
       <CardTitle className="flex items-center gap-2">
         {icon}
@@ -16,10 +18,10 @@ const GameCard = ({ title, description, href, icon }: { title: string; descripti
       <CardDescription>{description}</CardDescription>
     </CardHeader>
     <CardContent className="flex-grow flex items-end">
-       <Button asChild variant="link" className="p-0 h-auto">
+       <Button asChild variant="link" className="p-0 h-auto" disabled={disabled}>
           <Link href={href}>
-            Play Game
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1 h-4 w-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            {disabled ? "Coming Soon" : "Play Game"}
+            {!disabled && <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1 h-4 w-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>}
           </Link>
        </Button>
     </CardContent>
@@ -30,8 +32,15 @@ export default function FunTabPage() {
   return (
     <div className="container mx-auto py-12">
       <h1 className="text-4xl font-bold mb-8 text-center">Fun Zone!</h1>
+       <Alert className="mb-12 max-w-xl mx-auto border-primary/50 bg-primary/5 text-primary">
+         <Construction className="h-5 w-5" />
+         <AlertTitle>Under Development</AlertTitle>
+         <AlertDescription>
+           This section is currently being built. More fun games and activities are coming soon!
+         </AlertDescription>
+       </Alert>
       <p className="text-muted-foreground text-center mb-12 max-w-xl mx-auto">
-        Take a break and enjoy some simple games. More coming soon!
+        Take a break and enjoy some simple games.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -46,15 +55,17 @@ export default function FunTabPage() {
          {/* Add Other Game Cards Here */}
          <GameCard
             title="Platformer Fun"
-            description="Jump and run through exciting levels! (Coming Soon)"
+            description="Jump and run through exciting levels!"
             href="#" // Update href when implemented
             icon={<Gamepad2 className="h-5 w-5 text-muted-foreground" />}
+            disabled={true}
          />
          <GameCard
             title="Memory Match"
-            description="Test your memory with this classic card game. (Coming Soon)"
+            description="Test your memory with this classic card game."
              href="#" // Update href when implemented
             icon={<Gamepad2 className="h-5 w-5 text-muted-foreground" />}
+             disabled={true}
          />
          {/* Add more game cards as needed */}
       </div>
