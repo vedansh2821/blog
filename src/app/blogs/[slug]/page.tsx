@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -572,8 +573,8 @@ export default function BlogPostPage() {
          // Ensure post exists and user can edit
          if (!post || !canEditOrDelete) return;
          console.log("Edit button clicked for post:", post?.slug);
-         toast({ title: "Edit Functionality", description: "Navigating to edit page (not implemented yet)." });
-         // router.push(`/blogs/${post.slug}/edit`); // Example redirect to an edit page
+         // toast({ title: "Edit Functionality", description: "Navigating to edit page." });
+         router.push(`/blogs/${post.slug}/edit`); // Navigate to the edit page
      };
 
      const handleDelete = async () => {

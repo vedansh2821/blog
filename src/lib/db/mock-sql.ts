@@ -1,3 +1,4 @@
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -145,6 +146,12 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
         needsSuffix = true; // Force suffix if collision detected
         finalSlug = `${baseSlug}-${counter}`;
         counter++;
+         // Safety break for extreme cases
+         if (counter > 100) {
+              console.warn(`[Mock DB] Slug generation reached limit for base: ${baseSlug}`);
+              finalSlug = `${baseSlug}-${Date.now()}`; // Add timestamp as last resort
+              break;
+          }
     }
 
     return finalSlug;
@@ -283,21 +290,26 @@ export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'i
      }
 
 
-    const updatedPost = {
-        ...posts[postIndex],
-        ...updateData,
+    const originalPost = posts[postIndex];
+    const updatedPost: Post = {
+        ...originalPost,
+        ...updateData, // Apply updates from payload
         updatedAt: new Date(),
         // Re-generate excerpt if content changed and no explicit excerpt provided
-        excerpt: updateData.content && !updateData.excerpt ? updateData.content.substring(0, 150) + '...' : updateData.excerpt ?? posts[postIndex].excerpt,
+        excerpt: updateData.content && !updateData.excerpt ? updateData.content.substring(0, 150) + '...' : updateData.excerpt ?? originalPost.excerpt,
+        // Generate a new slug if the title changed, keeping uniqueness in mind
+        slug: updateData.title && updateData.title !== originalPost.title
+              ? generateSlug(updateData.title, true) // Force unique suffix if title changes
+              : originalPost.slug,
     };
 
-    // Keep original author, only update fields
-    updatedPost.author = posts[postIndex].author; // Ensure author object remains consistent
+    // Ensure author remains the original author
+     updatedPost.author = originalPost.author;
 
     posts[postIndex] = updatedPost;
-    console.log(`[Mock DB] Post updated: ${updatedPost.title}`);
+    console.log(`[Mock DB] Post updated: ${updatedPost.title} (New Slug: ${updatedPost.slug})`);
 
-    // Fetch potentially updated author details (name might change etc)
+    // Fetch potentially updated author details (name might change etc) - not strictly necessary if author doesn't change
     const author = await findUserById(updatedPost.author.id);
     // Ensure dates are Date objects when returning
     return {
@@ -410,7 +422,7 @@ const seedData = async () => {
               title: "The Rise of Remote Work: Challenges and Opportunities",
               content: "<p>Remote work is transforming the professional landscape. We discuss the benefits, drawbacks, and tools needed for successful remote collaboration.</p><blockquote>\"The ability to work from anywhere is a game-changer, but requires discipline and effective communication.\"</blockquote><p>Adapting to this new normal is key for both employees and employers.</p>",
               category: "Technology", // Or could be Lifestyle/Business
-              authorId: user2.id, // Alex
+              authorId: user2.id, // Alex G.
               tags: ["remote work", "productivity", "future of work", "collaboration"],
               excerpt: "An analysis of the remote work trend, covering its challenges, benefits, and tools for success.",
               imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`
@@ -430,7 +442,7 @@ const seedData = async () => {
              title: "Exploring Southeast Asia: A Backpacker's Dream",
              content: "<p>Southeast Asia offers incredible experiences for budget travelers. From vibrant cities to stunning beaches, here's a look at must-visit destinations.</p><img src='https://picsum.photos/seed/sea-travel/800/400' alt='Southeast Asia Landscape' /><p>Tips on accommodation, food, and navigating different cultures.</p>",
              category: "Travel",
-             authorId: user2.id, // Alex
+             authorId: user2.id, // Alex G.
              tags: ["travel", "backpacking", "southeast asia", "budget travel", "adventure"],
              excerpt: "A backpacker's guide to exploring the diverse and beautiful countries of Southeast Asia.",
               imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`
@@ -445,6 +457,17 @@ const seedData = async () => {
              excerpt: "A comparison of GraphQL and REST APIs, highlighting their key differences, advantages, and disadvantages.",
               imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`
           }, false);
+
+           // Add a post in the 'Love' category
+           await createPost({
+             title: "Navigating Modern Relationships: Communication is Key",
+             content: "<p>Building and maintaining healthy relationships in today's fast-paced world requires conscious effort, especially in communication.</p><h3>Tips for Better Communication:</h3><ul><li><strong>Active Listening:</strong> Truly hear what your partner is saying, without interrupting.</li><li><strong>Express Needs Clearly:</strong> Avoid ambiguity; state your feelings and needs openly.</li><li><strong>Empathy:</strong> Try to understand your partner's perspective, even if you disagree.</li><li><strong>Constructive Conflict:</strong> Address disagreements respectfully, focusing on the issue, not the person.</li></ul><p>Investing in communication strengthens the foundation of any relationship.</p>",
+             category: "Love", // New Category
+             authorId: user1.id, // Aayushi
+             tags: ["relationships", "communication", "love", "dating", "mental health"],
+             excerpt: "Exploring the importance of effective communication in modern relationships and practical tips to improve it.",
+             imageUrl: `https://picsum.photos/seed/modern-love/1200/600`
+           }, false);
 
 
         console.log("[Mock DB] Seed data creation finished.");
