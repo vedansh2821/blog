@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Menu, X, Search, Sun, Moon, Code2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,8 @@ export default function Header() {
   const { theme, toggleTheme } = useTheme();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false); // State to track client-side mount
+  const [searchQuery, setSearchQuery] = useState(''); // State for search query
+  const router = useRouter(); // Initialize router
 
   // Set mounted to true only on the client side
   useEffect(() => {
@@ -41,6 +44,19 @@ export default function Header() {
   }, []);
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+        router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        setSearchQuery(''); // Clear search bar after submission
+        closeMobileMenu(); // Close mobile menu if open
+    }
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
 
   return (
     <header
@@ -74,15 +90,20 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-4">
-          <div className="relative hidden sm:block">
+           {/* Desktop Search Form */}
+           <form onSubmit={handleSearchSubmit} className="relative hidden sm:block">
             <Input
               type="search"
               placeholder="Search posts..."
+              value={searchQuery}
+              onChange={handleSearchChange}
               className="h-9 w-40 pr-8 sm:w-56 rounded-full text-sm"
               aria-label="Search blog posts"
             />
-            <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
+            <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-0 border-none bg-transparent cursor-pointer">
+                <Search className="h-4 w-4 text-muted-foreground" />
+            </button>
+           </form>
 
           <Button
             variant="ghost"
@@ -136,15 +157,20 @@ export default function Header() {
                      ))}
                    </nav>
                    <div className="mt-auto border-t p-4">
-                      <div className="relative">
+                      {/* Mobile Search Form */}
+                      <form onSubmit={handleSearchSubmit} className="relative">
                           <Input
                             type="search"
                             placeholder="Search posts..."
+                            value={searchQuery}
+                            onChange={handleSearchChange}
                             className="h-9 w-full pr-8 rounded-full text-sm"
                             aria-label="Search blog posts"
                           />
-                          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        </div>
+                          <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-0 border-none bg-transparent cursor-pointer">
+                              <Search className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </form>
                    </div>
                 </div>
               </SheetContent>
