@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { findPostBySlug, updatePost, deletePost } from '@/lib/db/mock-sql'; // Use mock SQL DB functions
 // Removed getUserFromRequest import as we'll get ID from client for now
@@ -134,4 +135,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete post', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
-```
