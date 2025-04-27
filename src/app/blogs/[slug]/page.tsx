@@ -42,16 +42,17 @@ import type { Author, Comment, Post, RelatedPost } from '@/types/blog'; // Impor
 
 // Helper function to fetch post details from the API
 const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
-  console.log(`[fetchPostDetails] Fetching post with slug: ${slug} from API`);
+  console.log(`[fetchPostDetails] Fetching post with slug: "${slug}" from API`);
   try {
       const response = await fetch(`/api/posts/${slug}`);
       if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Could not read error response body');
+          console.error(`[fetchPostDetails] API Error ${response.status} for slug "${slug}": ${errorText}`);
           if (response.status === 404) {
-              console.log(`[fetchPostDetails] Post not found (404) for slug: ${slug}`);
-              return null;
+              console.log(`[fetchPostDetails] Post explicitly not found (404) for slug: ${slug}`);
+              return null; // Return null for 404 as intended
           }
-           const errorText = await response.text();
-           console.error(`[fetchPostDetails] API Error ${response.status}: ${errorText}`);
+          // For other errors, throw to be caught below
           throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
       const data: any = await response.json(); // Use any initially
@@ -70,11 +71,15 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            views: data.views ?? 0,
            rating: data.rating ?? 0,
            ratingCount: data.ratingCount ?? 0,
+           // Add defaults for new structured content fields if missing from old posts
+           heading: data.heading || data.title || 'Untitled Post', // Use title as fallback for heading
+           subheadings: data.subheadings || [],
+           paragraphs: data.paragraphs || [],
        };
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, post);
       return post;
   } catch (error) {
-      console.error(`[fetchPostDetails] Error fetching post ${slug}:`, error);
+      console.error(`[fetchPostDetails] Catch block error fetching post ${slug}:`, error);
       return null; // Return null on error
   }
 };
@@ -162,6 +167,11 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
              excerpt: post.excerpt || post.title || 'No excerpt available',
              imageUrl: post.imageUrl || `https://picsum.photos/seed/${post.id}/600/400`,
              category: post.category || 'Uncategorized',
+             // Add heading if available, fallback to title
+             heading: post.heading || post.title || 'Related Post',
+             // Ensure subheadings/paragraphs are arrays (optional)
+             subheadings: post.subheadings || [],
+             paragraphs: post.paragraphs || [],
         }));
 
 

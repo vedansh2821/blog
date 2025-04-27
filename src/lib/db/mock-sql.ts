@@ -1,4 +1,5 @@
 
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -153,7 +154,8 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
     let needsSuffix = addUniqueSuffix;
 
     // Check for existing slug even if suffix wasn't explicitly requested
-    while (posts.some(p => p.slug === finalSlug)) {
+    // Use case-insensitive comparison for checking existence
+    while (posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase())) {
         needsSuffix = true; // Force suffix if collision detected
         finalSlug = `${baseSlug}-${counter}`;
         counter++;
@@ -171,7 +173,7 @@ const generateSlug = (title: string, addUniqueSuffix: boolean = false): string =
 
 // Modify createPost to accept the addUniqueSuffix parameter
 export const createPost = async (
-    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount'> & { authorId: string },
+    postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt' | 'heading' | 'subheadings' | 'paragraphs'> & { authorId: string, content: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
     addUniqueSuffix: boolean = false // Default to false (for seeding)
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
@@ -179,6 +181,7 @@ export const createPost = async (
         throw new Error(`[Mock DB] Author not found for ID: ${postData.authorId}`);
     }
 
+    const now = new Date();
     const newPost: Post = {
         id: `post-${postIdCounter++}`,
         // Use the new parameter here when calling generateSlug
@@ -188,14 +191,17 @@ export const createPost = async (
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
         category: postData.category,
         author: createAuthorObject(author), // Author object now includes Date object for joinedAt
-        publishedAt: new Date(),
-        updatedAt: new Date(),
+        publishedAt: now,
+        updatedAt: now,
         commentCount: 0,
         views: Math.floor(Math.random() * 1000), // Add random views
         excerpt: postData.excerpt || postData.content.substring(0, 150) + '...',
         tags: postData.tags || [],
         rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Random rating 3.0-5.0
         ratingCount: Math.floor(Math.random() * 50) + 5, // Add rating count
+        heading: postData.heading, // Include structured content fields
+        subheadings: postData.subheadings,
+        paragraphs: postData.paragraphs,
     };
     console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
     posts.push(newPost);
@@ -204,12 +210,15 @@ export const createPost = async (
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
-    console.log(`[Mock DB] Finding post by slug: ${slug}`);
-    const post = posts.find(p => p.slug === slug);
+    const lowerCaseSlug = slug.toLowerCase();
+    console.log(`[Mock DB] Finding post by slug (case-insensitive): "${lowerCaseSlug}"`);
+    // Find using case-insensitive comparison
+    const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (!post) {
-        console.warn(`[Mock DB] Post with slug "${slug}" not found.`);
+        console.warn(`[Mock DB] Post with slug "${lowerCaseSlug}" not found.`);
         return null;
     }
+     console.log(`[Mock DB] Found post with ID: ${post.id} for slug: ${slug}`);
 
     // Simulate fetching author details again (or ensure they are always embedded)
     const author = await findUserById(post.author.id);
@@ -280,9 +289,14 @@ export const findPosts = async (options: {
 };
 
 
-export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount'>> & { requestingUserId: string }): Promise<Post | null> => {
+export const updatePost = async (
+    slug: string,
+    updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'>> & { requestingUserId: string }
+): Promise<Post | null> => {
     console.log(`[Mock DB] Updating post with slug: ${slug}`);
-    const postIndex = posts.findIndex(p => p.slug === slug);
+    const lowerCaseSlug = slug.toLowerCase();
+    // Find using case-insensitive comparison
+    const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for update: ${slug}`);
         return null;
@@ -302,23 +316,30 @@ export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'i
 
 
     const originalPost = posts[postIndex];
+
+    // Generate new slug ONLY if title changed
+    const newSlug = (updateData.title && updateData.title !== originalPost.title)
+                    ? generateSlug(updateData.title, true) // Force unique suffix if title changes
+                    : originalPost.slug;
+
+
     const updatedPost: Post = {
         ...originalPost,
         ...updateData, // Apply updates from payload
+        slug: newSlug, // Assign the potentially new slug
         updatedAt: new Date(),
         // Re-generate excerpt if content changed and no explicit excerpt provided
-        excerpt: updateData.content && !updateData.excerpt ? updateData.content.substring(0, 150) + '...' : updateData.excerpt ?? originalPost.excerpt,
-        // Generate a new slug if the title changed, keeping uniqueness in mind
-        slug: updateData.title && updateData.title !== originalPost.title
-              ? generateSlug(updateData.title, true) // Force unique suffix if title changes
-              : originalPost.slug,
+        // Also ensure fallback if content itself is undefined/null
+        excerpt: (updateData.content && !updateData.excerpt)
+                  ? (updateData.content.substring(0, 150) + '...')
+                  : (updateData.excerpt ?? originalPost.excerpt),
+        // Ensure author remains the original author
+        author: originalPost.author,
     };
 
-    // Ensure author remains the original author
-     updatedPost.author = originalPost.author;
 
     posts[postIndex] = updatedPost;
-    console.log(`[Mock DB] Post updated: ${updatedPost.title} (New Slug: ${updatedPost.slug})`);
+    console.log(`[Mock DB] Post updated: ${updatedPost.title} (Slug: ${updatedPost.slug})`);
 
     // Fetch potentially updated author details (name might change etc) - not strictly necessary if author doesn't change
     const author = await findUserById(updatedPost.author.id);
@@ -333,7 +354,9 @@ export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'i
 
 export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
     console.log(`[Mock DB] Deleting post with slug: ${slug} by user: ${requestingUserId}`);
-    const postIndex = posts.findIndex(p => p.slug === slug);
+    const lowerCaseSlug = slug.toLowerCase();
+    // Find using case-insensitive comparison
+    const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for delete: ${slug}`);
         return false;
@@ -416,7 +439,14 @@ const seedData = async () => {
             authorId: adminUser.id, // Vedansh
             tags: ["typescript", "web development", "javascript", "react"],
             excerpt: "Explore the benefits and core features of TypeScript for building scalable and maintainable web applications.",
-            imageUrl: `https://picsum.photos/seed/typescript-mastery/1200/600`
+            imageUrl: `https://picsum.photos/seed/typescript-mastery/1200/600`,
+            heading: "Mastering TypeScript", // Added heading
+            subheadings: ["Why TypeScript?", "Key Features"], // Added subheadings
+            paragraphs: [ // Added paragraphs
+                "TypeScript has become an essential tool for building robust and scalable web applications. This post explores key concepts like static typing, interfaces, generics, and decorators.",
+                "Improved code quality and maintainability. Early error detection during development. Enhanced developer experience with autocompletion and refactoring tools.",
+                "We'll dive into practical examples using React and Node.js."
+            ]
         }, false);
 
         await createPost({
@@ -426,7 +456,14 @@ const seedData = async () => {
              authorId: user1.id, // Aayushi
              tags: ["sustainability", "eco-friendly", "minimalism", "green living"],
              excerpt: "Discover simple, actionable steps towards a more sustainable and environmentally friendly lifestyle.",
-              imageUrl: `https://picsum.photos/seed/sustainable-living/1200/600`
+             imageUrl: `https://picsum.photos/seed/sustainable-living/1200/600`,
+             heading: "A Greener Life",
+             subheadings: ["Easy Swaps"],
+             paragraphs: [
+                 "Making sustainable choices doesn't have to be overwhelming. This article provides actionable tips for reducing your environmental impact.",
+                 "Reusable shopping bags. Water bottles and coffee cups. Switching to LED bulbs. Reducing meat consumption.",
+                 "Every small step contributes to a healthier planet."
+             ]
          }, false);
 
           await createPost({
@@ -436,7 +473,13 @@ const seedData = async () => {
               authorId: user2.id, // Alex G.
               tags: ["remote work", "productivity", "future of work", "collaboration"],
               excerpt: "An analysis of the remote work trend, covering its challenges, benefits, and tools for success.",
-              imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`
+              imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`,
+              heading: "Remote Work Revolution",
+              paragraphs: [
+                   "Remote work is transforming the professional landscape. We discuss the benefits, drawbacks, and tools needed for successful remote collaboration.",
+                   "\"The ability to work from anywhere is a game-changer, but requires discipline and effective communication.\"",
+                   "Adapting to this new normal is key for both employees and employers."
+              ]
           }, false);
 
          await createPost({
@@ -446,7 +489,14 @@ const seedData = async () => {
            authorId: user1.id, // Aayushi
            tags: ["meditation", "mindfulness", "wellness", "mental health", "stress relief"],
            excerpt: "A simple guide for beginners to start practicing mindfulness meditation for reduced stress and improved focus.",
-           imageUrl: `https://picsum.photos/seed/mindfulness-guide/1200/600`
+           imageUrl: `https://picsum.photos/seed/mindfulness-guide/1200/600`,
+           heading: "Beginner's Mindfulness",
+           subheadings: ["Getting Started"],
+           paragraphs: [
+                "Learn the basics of mindfulness meditation and how it can help reduce stress and improve focus.",
+                "Find a quiet space. Sit comfortably. Focus on your breath. Gently redirect your attention when your mind wanders.",
+                "Even 5-10 minutes daily can make a difference."
+           ]
          }, false);
 
           await createPost({
@@ -456,7 +506,12 @@ const seedData = async () => {
              authorId: user2.id, // Alex G.
              tags: ["travel", "backpacking", "southeast asia", "budget travel", "adventure"],
              excerpt: "A backpacker's guide to exploring the diverse and beautiful countries of Southeast Asia.",
-              imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`
+              imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`,
+              heading: "SEA Backpacking",
+              paragraphs: [
+                   "Southeast Asia offers incredible experiences for budget travelers. From vibrant cities to stunning beaches, here's a look at must-visit destinations.",
+                   "Tips on accommodation, food, and navigating different cultures."
+              ]
           }, false);
 
           await createPost({
@@ -466,7 +521,14 @@ const seedData = async () => {
              authorId: adminUser.id, // Vedansh
              tags: ["graphql", "rest", "api", "web development", "architecture"],
              excerpt: "A comparison of GraphQL and REST APIs, highlighting their key differences, advantages, and disadvantages.",
-              imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`
+              imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`,
+              heading: "GraphQL vs REST",
+              subheadings: ["Key Differences"],
+              paragraphs: [
+                  "Comparing GraphQL and REST architectural styles for building APIs. Understanding the pros and cons of each approach.",
+                  "Data Fetching: GraphQL allows clients to request exactly what they need. Endpoints: REST typically uses multiple endpoints, while GraphQL uses a single endpoint. Schema & Typing: GraphQL has a strong type system.",
+                  "Which one is right for your next project?"
+              ]
           }, false);
 
            // Add a post in the 'Love' category
@@ -477,7 +539,14 @@ const seedData = async () => {
              authorId: user1.id, // Aayushi
              tags: ["relationships", "communication", "love", "dating", "mental health"],
              excerpt: "Exploring the importance of effective communication in modern relationships and practical tips to improve it.",
-             imageUrl: `https://picsum.photos/seed/modern-love/1200/600`
+             imageUrl: `https://picsum.photos/seed/modern-love/1200/600`,
+             heading: "Communication in Relationships",
+             subheadings: ["Tips for Better Communication"],
+             paragraphs: [
+                  "Building and maintaining healthy relationships in today's fast-paced world requires conscious effort, especially in communication.",
+                  "Active Listening: Truly hear what your partner is saying, without interrupting. Express Needs Clearly: Avoid ambiguity; state your feelings and needs openly. Empathy: Try to understand your partner's perspective, even if you disagree. Constructive Conflict: Address disagreements respectfully, focusing on the issue, not the person.",
+                  "Investing in communication strengthens the foundation of any relationship."
+             ]
            }, false);
 
 
