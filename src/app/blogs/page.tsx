@@ -9,117 +9,184 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import type { Post } from '@/types/blog'; // Import Post type
+import { useToast } from '@/hooks/use-toast'; // Import useToast
 
-
-// Mock categories
+// Mock categories (can be fetched from API later if dynamic)
 const categories = [
   { value: 'all', label: 'All Categories' },
-  { value: 'technology', label: 'Technology' },
-  { value: 'lifestyle', label: 'Lifestyle' },
-  { value: 'health', label: 'Health' },
-  { value: 'travel', label: 'Travel' },
+  { value: 'Technology', label: 'Technology' }, // Use actual category names from seeded data
+  { value: 'Lifestyle', label: 'Lifestyle' },
+  { value: 'Health', label: 'Health' },
+  { value: 'Travel', label: 'Travel' },
 ];
 
-// Mock data fetching function (adapt for filtering and pagination)
-const fetchFilteredPosts = async (page: number, limit: number = 9, category: string = 'all', usePagination: boolean = false) => {
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+// API fetching function for blogs page
+const fetchPostsFromApi = async (
+    page: number,
+    limit: number = 9,
+    category: string = 'all',
+    // query?: string // Add query later if search is added here
+): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+    });
+    if (category && category !== 'all') {
+        params.set('category', category);
+    }
+    // if (query) {
+    //     params.set('q', query);
+    // }
 
-  const allPosts = Array.from({ length: 50 }).map((_, index) => ({ // Generate more posts for filtering/pagination
-    id: `post-${index}`,
-    title: `Blog Post Title ${index + 1}`,
-    slug: `blog-post-title-${index + 1}`,
-    excerpt: `This is a short description for blog post ${index + 1}.`,
-    imageUrl: `https://picsum.photos/seed/${index + 1}/600/400`,
-    category: ['Technology', 'Lifestyle', 'Health', 'Travel'][index % 4],
-    author: {
-      name: ['Alice', 'Bob', 'Charlie'][index % 3],
-      avatarUrl: `https://i.pravatar.cc/40?u=author${index % 3}`,
-    },
-    publishedAt: new Date(Date.now() - index * 24 * 60 * 60 * 1000),
-    commentCount: Math.floor(Math.random() * 50),
-  }));
+    console.log(`[BlogsPage] Fetching posts from API: /api/posts?${params.toString()}`);
+    try {
+        const response = await fetch(`/api/posts?${params.toString()}`);
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`API Error: ${response.status} ${response.statusText}. Details: ${errorData}`);
+        }
+        const data = await response.json();
+        console.log("[BlogsPage] API Response:", data);
 
-  const filteredPosts = category === 'all'
-    ? allPosts
-    : allPosts.filter(post => post.category.toLowerCase() === category);
+        // Ensure posts array exists and convert date strings
+        const posts = (data.posts || []).map((post: any) => ({
+             ...post,
+             publishedAt: new Date(post.publishedAt),
+             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+             // Ensure nested author has date object if present
+             author: {
+                 ...post.author,
+                 joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
+             },
+         }));
 
-  const totalPosts = filteredPosts.length;
-  const totalPages = Math.ceil(totalPosts / limit);
-  const startIndex = page * limit;
-  const endIndex = startIndex + limit;
-  const posts = filteredPosts.slice(startIndex, endIndex);
-
-  const hasMore = usePagination ? page < totalPages - 1 : endIndex < totalPosts;
-
-  return { posts, hasMore, totalPages, currentPage: page };
+        return {
+             posts,
+             hasMore: data.hasMore ?? false,
+             totalPages: data.totalPages ?? 1,
+             currentPage: data.currentPage ?? page,
+             totalResults: data.totalResults ?? 0,
+         };
+    } catch (error) {
+        console.error("[BlogsPage] Error fetching posts:", error);
+        throw error; // Re-throw to be caught by the caller
+    }
 };
 
 
 export default function BlogsPage() {
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [page, setPage] = useState(0); // Page index (0-based)
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false); // State for loading more in infinite scroll
   const [hasMore, setHasMore] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [usePagination, setUsePagination] = useState(false);
+  const [usePagination, setUsePagination] = useState(false); // Default to infinite scroll
   const [totalPages, setTotalPages] = useState(1);
   const observer = useRef<IntersectionObserver>();
   const isInitialMount = useRef(true);
+  const { toast } = useToast();
 
   const loadPosts = useCallback(async (pageNum: number, category: string, pagination: boolean, append: boolean = false) => {
-    setLoading(true);
-    const { posts: newPosts, hasMore: newHasMore, totalPages: newTotalPages } = await fetchFilteredPosts(pageNum, 9, category, pagination);
+     if (!append) {
+        setLoading(true); // Show main loading skeleton only when not appending
+     } else {
+        setLoadingMore(true); // Show loading indicator for infinite scroll
+     }
 
-    if (append && !pagination) {
-        setPosts(prevPosts => [...prevPosts, ...newPosts]);
-    } else {
-        setPosts(newPosts);
-    }
+     try {
+        const { posts: newPosts, hasMore: newHasMore, totalPages: newTotalPages } = await fetchPostsFromApi(pageNum, 9, category /* Add query here if needed */);
 
-    setPage(pageNum);
-    setHasMore(newHasMore);
-    setTotalPages(newTotalPages);
-    setLoading(false);
-  }, []);
+        if (append && !pagination) {
+            setPosts(prevPosts => [...prevPosts, ...newPosts]);
+        } else {
+            setPosts(newPosts); // Replace posts for new page/category/pagination mode
+        }
 
-  // Initial load and category/pagination mode change
+        setPage(pageNum); // Update current page index
+        setHasMore(newHasMore);
+        setTotalPages(newTotalPages);
+
+     } catch (error) {
+          console.error("[BlogsPage] Failed to load posts:", error);
+          toast({
+             title: "Error Loading Posts",
+             description: error instanceof Error ? error.message : "Could not fetch posts.",
+             variant: "destructive",
+          });
+          // Decide how to handle errors - stop loading more? clear posts?
+          if (!append) setPosts([]); // Clear posts on initial load error
+          setHasMore(false); // Stop further loading attempts on error
+     } finally {
+         setLoading(false);
+         setLoadingMore(false);
+         console.log(`[BlogsPage] Finished loading: page=${pageNum}, append=${append}`);
+     }
+  }, [toast]); // Include toast in dependencies
+
+  // Initial load and changes in category/pagination mode
   useEffect(() => {
-    // Prevent initial double load on strict mode
-    if (isInitialMount.current) {
-        isInitialMount.current = false;
+     // Prevent initial double load on strict mode
+     if (isInitialMount.current) {
+         isInitialMount.current = false;
+         console.log("[BlogsPage] Initial mount, loading first page.");
          loadPosts(0, selectedCategory, usePagination, false);
-        return;
-    }
+         return;
+     }
+     console.log(`[BlogsPage] Dependency changed (category or pagination mode), loading page 0. Category: ${selectedCategory}, Pagination: ${usePagination}`);
+     // Reload data from page 0 when category or pagination mode changes
      loadPosts(0, selectedCategory, usePagination, false);
   }, [selectedCategory, usePagination, loadPosts]);
 
 
   const handleCategoryChange = (value: string) => {
+    console.log(`[BlogsPage] Category changed to: ${value}`);
     setSelectedCategory(value);
-    // Reset page to 0 when category changes
+    // Reset page to 0 and trigger reload via useEffect
     setPage(0);
   };
 
-  const handlePaginationChange = (newPage: number) => {
-     if (newPage >= 0 && newPage < totalPages) {
+  const handlePaginationModeChange = (checked: boolean) => {
+    console.log(`[BlogsPage] Pagination mode changed to: ${checked ? 'Pagination' : 'Infinite Scroll'}`);
+    setUsePagination(checked);
+    // Reset page to 0 and trigger reload via useEffect
+     setPage(0);
+  };
+
+  const handlePageChange = (newPage: number) => {
+     if (newPage >= 0 && newPage < totalPages && usePagination) {
+        console.log(`[BlogsPage] Pagination: changing to page ${newPage}`);
+        // Don't append when using pagination controls
        loadPosts(newPage, selectedCategory, usePagination, false);
      }
    };
 
+  // Intersection observer for infinite scroll
   const lastPostElementRef = useCallback((node: HTMLDivElement) => {
-    if (loading || usePagination) return; // Don't observe if loading or using pagination
+    // Only run setup if using infinite scroll
+    if (usePagination) {
+       if (observer.current) observer.current.disconnect(); // Disconnect if switching away from infinite
+       return;
+    }
+    if (loading || loadingMore) return; // Don't observe if loading
     if (observer.current) observer.current.disconnect();
+
     observer.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore) {
+        console.log("[BlogsPage] Infinite scroll trigger: loading next page.");
         // Load next page by appending
         loadPosts(page + 1, selectedCategory, usePagination, true);
       }
     });
-    if (node) observer.current.observe(node);
-  }, [loading, hasMore, usePagination, page, selectedCategory, loadPosts]);
 
-  const renderPagination = () => {
-      if (!usePagination || totalPages <= 1) return null;
+    if (node) observer.current.observe(node);
+
+  }, [loading, loadingMore, hasMore, usePagination, page, selectedCategory, loadPosts]);
+
+
+  const renderPaginationControls = () => {
+      if (!usePagination || totalPages <= 1 || loading) return null;
 
       const pages = [];
       const maxVisiblePages = 5; // Example: Show 5 page links max (1 ... 3 4 5 ... 10)
@@ -129,73 +196,69 @@ export default function BlogsPage() {
         <PaginationItem key="prev">
           <PaginationPrevious
             href="#"
-            onClick={(e) => { e.preventDefault(); handlePaginationChange(page - 1); }}
+            onClick={(e) => { e.preventDefault(); handlePageChange(page - 1); }}
             className={page === 0 ? "pointer-events-none opacity-50" : ""}
             aria-disabled={page === 0}
           />
         </PaginationItem>
       );
 
-      // Page Links
-      if (totalPages <= maxVisiblePages) {
-          for (let i = 0; i < totalPages; i++) {
-              pages.push(
-                  <PaginationItem key={i}>
-                      <PaginationLink
-                          href="#"
-                          onClick={(e) => { e.preventDefault(); handlePaginationChange(i); }}
-                          isActive={page === i}
-                          aria-current={page === i ? 'page' : undefined}
-                      >
-                          {i + 1}
-                      </PaginationLink>
-                  </PaginationItem>
-              );
-          }
-      } else {
-          // Logic for ellipsis (...)
-          pages.push( // First page
-              <PaginationItem key={0}>
-                  <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePaginationChange(0); }} isActive={page === 0}>1</PaginationLink>
-              </PaginationItem>
-          );
+      // Page Links Logic (simplified example, can be enhanced)
+       if (totalPages <= maxVisiblePages) {
+         for (let i = 0; i < totalPages; i++) {
+           pages.push(
+             <PaginationItem key={i}>
+               <PaginationLink
+                 href="#"
+                 onClick={(e) => { e.preventDefault(); handlePageChange(i); }}
+                 isActive={page === i}
+                 aria-current={page === i ? 'page' : undefined}
+               >
+                 {i + 1}
+               </PaginationLink>
+             </PaginationItem>
+           );
+         }
+       } else {
+         // Always show first page
+         pages.push(
+           <PaginationItem key={0}>
+             <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePageChange(0); }} isActive={page === 0}>1</PaginationLink>
+           </PaginationItem>
+         );
 
-          let startPage = Math.max(1, page - 1);
-          let endPage = Math.min(totalPages - 2, page + 1);
+         // Ellipsis after first page if needed
+         if (page > 2) {
+           pages.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>);
+         }
 
-          if (page < 3) { // Near the beginning
-              startPage = 1;
-              endPage = 3;
-          } else if (page > totalPages - 4) { // Near the end
-              startPage = totalPages - 4;
-              endPage = totalPages - 2;
-          }
+         // Central pages
+         const startPage = Math.max(1, page - 1);
+         const endPage = Math.min(totalPages - 2, page + 1);
+         for (let i = startPage; i <= endPage; i++) {
+            if (i > 0 && i < totalPages -1) { // Ensure middle pages are not first/last
+               pages.push(
+                 <PaginationItem key={i}>
+                   <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePageChange(i); }} isActive={page === i}>
+                     {i + 1}
+                   </PaginationLink>
+                 </PaginationItem>
+               );
+            }
+         }
 
-          if (startPage > 1) {
-              pages.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>);
-          }
-
-          for (let i = startPage; i <= endPage; i++) {
-              pages.push(
-                  <PaginationItem key={i}>
-                      <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePaginationChange(i); }} isActive={page === i}>
-                          {i + 1}
-                      </PaginationLink>
-                  </PaginationItem>
-              );
-          }
-
-          if (endPage < totalPages - 2) {
+          // Ellipsis before last page if needed
+          if (page < totalPages - 3) {
               pages.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>);
           }
 
-           pages.push( // Last page
-                <PaginationItem key={totalPages - 1}>
-                    <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePaginationChange(totalPages - 1); }} isActive={page === totalPages - 1}>{totalPages}</PaginationLink>
-                </PaginationItem>
-            );
-
-      }
+          // Always show last page
+          pages.push(
+              <PaginationItem key={totalPages - 1}>
+                  <PaginationLink href="#" onClick={(e) => { e.preventDefault(); handlePageChange(totalPages - 1); }} isActive={page === totalPages - 1}>{totalPages}</PaginationLink>
+              </PaginationItem>
+          );
+       }
 
 
       // Next Button
@@ -203,15 +266,15 @@ export default function BlogsPage() {
         <PaginationItem key="next">
           <PaginationNext
             href="#"
-            onClick={(e) => { e.preventDefault(); handlePaginationChange(page + 1); }}
-            className={page === totalPages - 1 ? "pointer-events-none opacity-50" : ""}
-            aria-disabled={page === totalPages - 1}
+            onClick={(e) => { e.preventDefault(); handlePageChange(page + 1); }}
+            className={!hasMore || page === totalPages - 1 ? "pointer-events-none opacity-50" : ""} // Disable based on hasMore
+            aria-disabled={!hasMore || page === totalPages - 1}
           />
         </PaginationItem>
       );
 
       return (
-        <Pagination className="mt-8">
+        <Pagination className="mt-12">
           <PaginationContent>
             {pages}
           </PaginationContent>
@@ -239,57 +302,74 @@ export default function BlogsPage() {
             <Switch
               id="pagination-mode"
               checked={usePagination}
-              onCheckedChange={setUsePagination}
+              onCheckedChange={handlePaginationModeChange}
             />
-            <Label htmlFor="pagination-mode" className="text-sm">Use Pagination</Label>
+            <Label htmlFor="pagination-mode" className="text-sm whitespace-nowrap">Use Pagination</Label>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {posts.map((post, index) => {
-          // Attach ref to the last element only if using infinite scroll
-          if (!usePagination && posts.length === index + 1) {
-            return (
-              <div ref={lastPostElementRef} key={post.id}>
-                <BlogPostCard post={post} />
-              </div>
-            );
-          } else {
-            return <BlogPostCard key={post.id} post={post} />;
-          }
-        })}
-        {loading && Array.from({ length: 6 }).map((_, i) => (
-          <div key={`skeleton-${i}`} className="space-y-3">
-            <Skeleton className="h-48 w-full" />
-            <Skeleton className="h-6 w-3/4" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
-            <div className="flex justify-between items-center pt-2">
-               <Skeleton className="h-8 w-24" />
-               <Skeleton className="h-8 w-8 rounded-full" />
-             </div>
-          </div>
-        ))}
-      </div>
+      {/* Main Content Area */}
+      {loading ? (
+           // Loading Skeleton
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+               {Array.from({ length: 6 }).map((_, i) => (
+                 <div key={`skeleton-${i}`} className="space-y-3">
+                    <Skeleton className="h-48 w-full" />
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                     <div className="flex justify-between items-center pt-2">
+                        <Skeleton className="h-8 w-24" />
+                       <Skeleton className="h-8 w-8 rounded-full" />
+                     </div>
+                  </div>
+               ))}
+            </div>
+      ) : posts.length > 0 ? (
+           // Display Posts Grid
+           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+             {posts.map((post, index) => {
+               // Attach ref to the last element only if using infinite scroll
+               if (!usePagination && posts.length === index + 1) {
+                 return (
+                   <div ref={lastPostElementRef} key={post.id}>
+                     <BlogPostCard post={post} />
+                   </div>
+                 );
+               } else {
+                 return <BlogPostCard key={post.id} post={post} />;
+               }
+             })}
+              {/* Infinite Scroll Loading Skeletons */}
+              {!usePagination && loadingMore && Array.from({ length: 3 }).map((_, i) => (
+                  <div key={`loading-more-skeleton-${i}`} className="space-y-3">
+                      <Skeleton className="h-48 w-full" />
+                      <Skeleton className="h-6 w-3/4" />
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-5/6" />
+                      <div className="flex justify-between items-center pt-2">
+                          <Skeleton className="h-8 w-24" />
+                          <Skeleton className="h-8 w-8 rounded-full" />
+                      </div>
+                  </div>
+              ))}
+           </div>
+        ) : (
+             // No Posts Message
+              <p className="text-center text-muted-foreground mt-12 col-span-full">
+                No posts found matching your criteria.
+              </p>
+          )}
 
-       {/* Infinite Scroll Loading/End Message */}
-       {!usePagination && loading && posts.length > 0 && (
-         <p className="text-center text-muted-foreground mt-8">Loading more posts...</p>
+       {/* Infinite Scroll End Message */}
+       {!usePagination && !loadingMore && !hasMore && posts.length > 0 && (
+         <p className="text-center text-muted-foreground mt-12 col-span-full">You've reached the end!</p>
        )}
-       {!usePagination && !loading && !hasMore && posts.length > 0 && (
-         <p className="text-center text-muted-foreground mt-8">You've reached the end!</p>
-       )}
 
-      {/* Pagination */}
-      {renderPagination()}
+      {/* Pagination Controls */}
+      {renderPaginationControls()}
 
-
-      {!loading && posts.length === 0 && (
-        <p className="text-center text-muted-foreground mt-8 col-span-1 sm:col-span-2 lg:col-span-3">
-          No posts found matching your criteria.
-        </p>
-      )}
     </div>
   );
 }
