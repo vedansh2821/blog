@@ -9,29 +9,36 @@ export async function GET(
     { params }: { params: { slug: string } }
 ) {
     const slug = params.slug;
-    console.log(`API called: fetching post with slug=${slug}`);
+    console.log(`[API GET /api/posts/${slug}] Received request for slug: "${slug}"`); // Added quotes for clarity
 
     try {
         const postData = await findPostBySlug(slug);
 
         if (!postData) {
-            console.warn(`API GET /api/posts/${slug}: Post not found.`);
+            console.warn(`[API GET /api/posts/${slug}]: findPostBySlug returned null. Post not found.`);
             return NextResponse.json({ error: 'Post not found' }, { status: 404 });
         }
+        console.log(`[API GET /api/posts/${slug}]: Found post: ID ${postData.id}, Title: ${postData.title}`); // Log success
         // Ensure dates are ISO strings for JSON compatibility
         const responseData = {
             ...postData,
             publishedAt: new Date(postData.publishedAt).toISOString(),
             updatedAt: postData.updatedAt ? new Date(postData.updatedAt).toISOString() : undefined,
+             // Ensure author dates are also handled if necessary, though createAuthorObject should return Date
+             author: {
+                ...postData.author,
+                joinedAt: postData.author.joinedAt instanceof Date ? postData.author.joinedAt.toISOString() : postData.author.joinedAt,
+             }
         };
 
 
         return NextResponse.json(responseData);
     } catch (error) {
-        console.error(`Error fetching post ${slug}:`, error);
+        console.error(`[API GET /api/posts/${slug}] Error fetching post:`, error);
         return NextResponse.json({ error: 'Failed to fetch post', details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
+
 
 export async function PUT(
     request: Request,
@@ -53,37 +60,61 @@ export async function PUT(
             return NextResponse.json({ error: 'Unauthorized: Missing user identification.' }, { status: 401 });
         }
         if (!title || !category) {
-            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, content, category).`);
-            return NextResponse.json({ error: 'Missing required fields (title, content, category)' }, { status: 400 });
+            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, category).`); // Removed content requirement here
+            return NextResponse.json({ error: 'Missing required fields (title, category)' }, { status: 400 });
         }
+
+
+        // --- Construct Content from Structured Data ---
+         // Ensure data exists and is in the correct format before constructing content
+         let constructedContent = '';
+         if (heading && typeof heading === 'string') {
+             constructedContent += `<h1 class="text-2xl font-bold mb-4">${heading}</h1>`;
+         }
+         if (subheadings && Array.isArray(subheadings) && subheadings.length > 0) {
+             constructedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`; // Added title for subheadings section
+             subheadings.forEach(subheading => {
+                if (typeof subheading === 'string' && subheading.trim()) {
+                    constructedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`; // Added styling
+                }
+             });
+             constructedContent += `</ul>`;
+         }
+         if (paragraphs && Array.isArray(paragraphs) && paragraphs.length > 0) {
+             const validParagraphs = paragraphs.filter(p => typeof p === 'string' && p.trim());
+             if (validParagraphs.length > 0) {
+                 constructedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`; // Wrap paragraphs
+             }
+         }
+
+         if (!constructedContent && content) { // Fallback to existing content if structured data is empty
+             constructedContent = content;
+         }
 
 
         // Prepare data for mock DB function, using requestingUserId as the authorId
         const updatePayload = {
             title,
             category,
-            heading,
-            subheadings,
-            paragraphs,
-            content,
+            heading, // Send raw heading
+            subheadings, // Send raw subheadings array
+            paragraphs, // Send raw paragraphs array
+            content: constructedContent, // Send the constructed or original content
             excerpt,
             imageUrl,
             tags,
-            requestingUserId
+            requestingUserId // For authorization check
         };
 
         // --- Call DB Update with Authorization ---
         // Pass the requesting user's ID for the authorization check within updatePost
-        const updatedPost = await updatePost(slug, {
-            ...updatePayload, // Pass only the post fields to update
-            requestingUserId: requestingUserId, // Pass the user ID for auth check
-        });
+        const updatedPost = await updatePost(slug, updatePayload); // Send the correct payload
 
         if (!updatedPost) {
             // updatePost returns null if not found (after authorization check)
             console.warn(`[API PUT /api/posts/${slug}] Update failed: Post not found or authorization failed for user ${requestingUserId}.`);
             // Return 404 for not found, but authorization error is handled inside updatePost
-            return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+             return NextResponse.json({ error: 'Post not found or you are not authorized to edit it.' }, { status: 404 });
         }
 
         // Ensure dates are ISO strings for JSON compatibility
@@ -91,9 +122,14 @@ export async function PUT(
             ...updatedPost,
             publishedAt: new Date(updatedPost.publishedAt).toISOString(),
             updatedAt: updatedPost.updatedAt ? new Date(updatedPost.updatedAt).toISOString() : undefined,
+            // Ensure author dates are also handled if necessary
+             author: {
+                ...updatedPost.author,
+                joinedAt: updatedPost.author.joinedAt instanceof Date ? updatedPost.author.joinedAt.toISOString() : updatedPost.author.joinedAt,
+             }
         };
 
-        console.log(`[API PUT /api/posts/${slug}] Post updated successfully by user ${requestingUserId}.`);
+        console.log(`[API PUT /api/posts/${slug}] Post updated successfully by user ${requestingUserId}. New slug: ${responseData.slug}`);
         return NextResponse.json({ message: 'Post updated successfully', post: responseData });
 
     } catch (error) {
@@ -136,7 +172,7 @@ export async function DELETE(
             // deletePost returns false if not found (after authorization check)
             console.warn(`[API DELETE /api/posts/${slug}] Delete failed: Post not found or authorization failed for user ${requestingUserId}.`);
             // Return 404 for not found, but authorization error is handled inside deletePost
-            return NextResponse.json({ error: 'Post not found' }, { status: 404 });
+             return NextResponse.json({ error: 'Post not found or you are not authorized to delete it.' }, { status: 404 });
         }
 
         console.log(`[API DELETE /api/posts/${slug}] Post deleted successfully by user ${requestingUserId}.`);
