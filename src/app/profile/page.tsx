@@ -55,7 +55,7 @@ const fetchAllUsers = async (requestingUserId: string): Promise<AuthUser[]> => {
         const response = await fetch('/api/users', {
             headers: {
                 // Include the requesting user's ID for server-side authorization check
-                 'X-Mock-User-ID': requestingUserId,
+                 'X-Mock-User-ID': requestingUserId, // *** Add header here ***
              }
         });
         if (!response.ok) {
