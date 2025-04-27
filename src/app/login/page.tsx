@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, Loader2 } from 'lucide-react';
 import { useAuth, type AuthUser } from '@/lib/auth/authContext'; // Import useAuth and AuthUser
+import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 const loginFormSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address." }),
@@ -25,15 +26,24 @@ type LoginFormInputs = z.infer<typeof loginFormSchema>;
 export default function LoginPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { login, currentUser } = useAuth(); // Get login function from context
-  const [isLoading, setIsLoading] = useState(false);
+  const { login, currentUser, loading: authLoading } = useAuth(); // Get auth state and loading state
+  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading to avoid conflict
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormInputs>({
     resolver: zodResolver(loginFormSchema),
   });
 
+   // Effect to redirect if already logged in
+   useEffect(() => {
+       if (!authLoading && currentUser) {
+           console.log("User already logged in, redirecting to /");
+           router.push('/');
+       }
+   }, [currentUser, authLoading, router]);
+
+
   const onSubmit: SubmitHandler<LoginFormInputs> = async (data) => {
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -56,7 +66,7 @@ export default function LoginPage() {
         description: `Welcome back, ${user.name || user.email}!`,
       });
 
-      router.push('/'); // Redirect to homepage after successful login
+      // router.push('/'); // Redirect is handled by the useEffect now
 
     } catch (error) {
       console.error("Login error:", error);
@@ -65,20 +75,37 @@ export default function LoginPage() {
         description: error instanceof Error ? error.message : "An unknown error occurred.",
         variant: "destructive",
       });
-      setIsLoading(false); // Ensure loading is reset on error
+      setIsSubmitting(false); // Ensure loading is reset on error
     }
-    // No need to set loading to false on success because of redirect
+     // No need to set loading to false on success because of redirect handled by useEffect
   };
 
-   // Redirect if already logged in
-   if (currentUser) {
-       // You might want to show a loading state briefly before redirecting
-       // or simply redirect immediately.
-       router.push('/');
-       return null; // Return null or a loading indicator while redirecting
+
+   // Show loading skeleton or null while auth state is loading or redirecting
+   if (authLoading || currentUser) {
+      // You can return a more sophisticated loading skeleton here
+      return (
+         <div className="container mx-auto flex items-center justify-center min-h-[calc(100vh-10rem)] py-12">
+             <Card className="w-full max-w-md">
+                 <CardHeader>
+                     <Skeleton className="h-6 w-3/4 mx-auto mb-2" />
+                     <Skeleton className="h-4 w-1/2 mx-auto" />
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full mt-2" />
+                 </CardContent>
+                  <CardFooter>
+                      <Skeleton className="h-4 w-3/5 mx-auto" />
+                  </CardFooter>
+             </Card>
+         </div>
+      );
    }
 
 
+  // Render the login form only if not loading and not logged in
   return (
     <div className="container mx-auto flex items-center justify-center min-h-[calc(100vh-10rem)] py-12">
       <Card className="w-full max-w-md">
@@ -90,12 +117,12 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...register("email")} disabled={isLoading} autoComplete="email" />
+              <Input id="email" type="email" {...register("email")} disabled={isSubmitting} autoComplete="email" />
               {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register("password")} disabled={isLoading} autoComplete="current-password"/>
+              <Input id="password" type="password" {...register("password")} disabled={isSubmitting} autoComplete="current-password"/>
               {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
                {/* TODO: Add Forgot Password link */}
                {/* <div className="text-right">
@@ -104,9 +131,9 @@ export default function LoginPage() {
                  </Link>
                </div> */}
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? <Loader2 className="animate-spin mr-2" /> : <LogIn className="mr-2 h-4 w-4" />}
-              {isLoading ? "Logging In..." : "Log In"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <LogIn className="mr-2 h-4 w-4" />}
+              {isSubmitting ? "Logging In..." : "Log In"}
             </Button>
           </form>
            {/* Optional: Add social login buttons here */}
