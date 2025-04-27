@@ -3,7 +3,7 @@
 
 import type { AuthUser } from '@/lib/auth/authContext';
 import type { Post, Author } from '@/types/blog'; // Assuming types exist
-import bcrypt from 'bcrypt'; // Import bcrypt
+import bcrypt from 'bcrypt'; // Ensure bcrypt is imported
 
 interface MockUser extends AuthUser {
     hashedPassword?: string; // Store hashed password here
@@ -12,34 +12,20 @@ interface MockUser extends AuthUser {
 // --- In-Memory Stores ---
 const users: MockUser[] = [];
 const posts: Post[] = [];
+let userIdCounter = 1;
 let postIdCounter = 1;
-let userIdCounter = 1; // For unique user IDs
 
-// --- User Functions ---
-
-export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
-    console.log(`[Mock DB] Finding user by email: ${email}`);
-    const user = users.find(u => u.email === email);
-    return user ? { ...user } : null; // Return a copy
+// --- Helper Functions ---
+const generateSlug = (title: string, id: string): string => {
+    // Simple slug generation: lowercase title + id suffix
+    const baseSlug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens with single
+        .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
+    return `${baseSlug}-${id}`; // Use actual ID for uniqueness
 };
-
-export const findUserById = async (id: string): Promise<MockUser | null> => {
-    console.log(`[Mock DB] Finding user by ID: ${id}`);
-    const user = users.find(u => u.id === id);
-    return user ? { ...user } : null;
-};
-
-export const createUser = async (userData: Omit<MockUser, 'id'>): Promise<MockUser> => {
-    const newUser: MockUser = {
-        ...userData,
-        id: `user-${userIdCounter++}`, // Use a simple counter for mock IDs
-    };
-    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}`);
-    users.push(newUser);
-    return { ...newUser }; // Return a copy
-};
-
-// --- Post Functions ---
 
 const createAuthorObject = (user: MockUser | null): Author => {
     if (!user) {
@@ -54,35 +40,58 @@ const createAuthorObject = (user: MockUser | null): Author => {
     return {
         id: user.id,
         name: user.name || user.email || 'Unnamed Author',
-        slug: user.id, // Use ID as slug for author page link consistency
+        slug: user.id, // Use ID as slug for now
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Bio for ${user.name || user.email}`, // Simple bio
     };
 };
 
-const generateSlug = (title: string): string => {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single
-      .replace(/^-+|-+$/g, ''); // Trim leading/trailing hyphens
-     // Removed timestamp suffix for simplicity and consistency in mock
+
+// --- User Functions ---
+
+export const findUserByEmail = async (email: string): Promise<MockUser | null> => {
+    console.log(`[Mock DB] Finding user by email: ${email}`);
+    await new Promise(res => setTimeout(res, 50)); // Simulate delay
+    const user = users.find(u => u.email === email);
+    return user ? { ...user } : null; // Return a copy
 };
 
+export const findUserById = async (id: string): Promise<MockUser | null> => {
+    console.log(`[Mock DB] Finding user by ID: ${id}`);
+     await new Promise(res => setTimeout(res, 50)); // Simulate delay
+    const user = users.find(u => u.id === id);
+    return user ? { ...user } : null;
+};
 
-export const createPost = async (postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt' | 'excerpt'> & { authorId: string }): Promise<Post> => {
+export const createUser = async (userData: Omit<MockUser, 'id'> & { hashedPassword?: string }): Promise<MockUser> => {
+    const newUser: MockUser = {
+        ...userData,
+        id: `user-${userIdCounter++}`,
+    };
+    console.log(`[Mock DB] Creating user: ${newUser.email}, Role: ${newUser.role}`);
+    await new Promise(res => setTimeout(res, 100)); // Simulate delay
+    users.push(newUser);
+    // Don't return hashedPassword in the response object for security
+    const { hashedPassword, ...userResponse } = newUser;
+    return { ...userResponse };
+};
+
+// --- Post Functions ---
+
+
+export const createPost = async (postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'> & { authorId: string }): Promise<Post> => {
     const author = await findUserById(postData.authorId);
     if (!author) {
         throw new Error(`[Mock DB] Author not found for ID: ${postData.authorId}`);
     }
 
+    const newPostId = `post-${postIdCounter++}`;
     const newPost: Post = {
-        id: `post-${postIdCounter++}`,
-        slug: generateSlug(postData.title),
+        id: newPostId,
+        slug: generateSlug(postData.title, newPostId), // Generate slug using ID
         title: postData.title,
         content: postData.content,
-        imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
+        imageUrl: postData.imageUrl || `https://picsum.photos/seed/${newPostId}/1200/600`,
         category: postData.category,
         author: createAuthorObject(author),
         publishedAt: new Date(),
@@ -94,16 +103,17 @@ export const createPost = async (postData: Omit<Post, 'id' | 'slug' | 'author' |
         // rating: 0, // Add if needed
     };
     console.log(`[Mock DB] Creating post: ${newPost.title} (Slug: ${newPost.slug}) by ${newPost.author.name}`);
+     await new Promise(res => setTimeout(res, 150)); // Simulate delay
     posts.push(newPost);
     return { ...newPost }; // Return a copy
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
     console.log(`[Mock DB] Finding post by slug: ${slug}`);
+     await new Promise(res => setTimeout(res, 80)); // Simulate delay
     const post = posts.find(p => p.slug === slug);
     if (!post) {
-        console.warn(`[Mock DB] Post with slug "${slug}" not found.`);
-        console.log("[Mock DB] Available slugs:", posts.map(p => p.slug));
+        console.log(`[Mock DB] Post with slug ${slug} not found.`);
         return null;
     }
 
@@ -116,18 +126,18 @@ export const findPosts = async (options: {
     page?: number;
     limit?: number;
     category?: string;
-    authorId?: string; // Accepts author ID now
+    authorId?: string; // Use author ID directly
     query?: string;
 }): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
     const { page = 0, limit = 9, category, authorId, query } = options;
     console.log(`[Mock DB] Finding posts:`, options);
+    await new Promise(res => setTimeout(res, 200)); // Simulate delay
 
     let filtered = [...posts]; // Start with a copy
 
-    if (category && category !== 'all') {
+    if (category && category.toLowerCase() !== 'all') {
         filtered = filtered.filter(p => p.category.toLowerCase() === category.toLowerCase());
     }
-    // Filter by author ID if provided
     if (authorId) {
         filtered = filtered.filter(p => p.author.id === authorId);
     }
@@ -135,10 +145,10 @@ export const findPosts = async (options: {
         const lowerQuery = query.toLowerCase();
         filtered = filtered.filter(p =>
             p.title.toLowerCase().includes(lowerQuery) ||
-            p.excerpt.toLowerCase().includes(lowerQuery) ||
+            (p.excerpt && p.excerpt.toLowerCase().includes(lowerQuery)) || // Check if excerpt exists
             p.content.toLowerCase().includes(lowerQuery) ||
-            p.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) || // Search tags
-            p.category.toLowerCase().includes(lowerQuery) // Search category
+             (p.author.name && p.author.name.toLowerCase().includes(lowerQuery)) || // Search by author name
+             (p.tags && p.tags.some(tag => tag.toLowerCase().includes(lowerQuery))) // Search tags
         );
     }
 
@@ -158,6 +168,7 @@ export const findPosts = async (options: {
         return { ...post, author: createAuthorObject(author) };
     }));
 
+    console.log(`[Mock DB] Found ${totalResults} posts, returning page ${page} (${postsWithAuthors.length} posts)`);
     return {
         posts: postsWithAuthors,
         hasMore,
@@ -167,8 +178,9 @@ export const findPosts = async (options: {
     };
 };
 
-export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'>> & { authorId: string }): Promise<Post | null> => {
-    console.log(`[Mock DB] Attempting to update post with slug: ${slug}`);
+export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'updatedAt'>> & { currentUserId: string }): Promise<Post | null> => {
+    console.log(`[Mock DB] Updating post with slug: ${slug}`);
+     await new Promise(res => setTimeout(res, 100)); // Simulate delay
     const postIndex = posts.findIndex(p => p.slug === slug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for update: ${slug}`);
@@ -176,149 +188,156 @@ export const updatePost = async (slug: string, updateData: Partial<Omit<Post, 'i
     }
 
     const postToUpdate = posts[postIndex];
+    const currentUser = await findUserById(updateData.currentUserId);
 
-    // **Authorization Check**: Ensure the authorId matches the post's author
-    if (postToUpdate.author.id !== updateData.authorId) {
-         console.error(`[Mock DB] Authorization failed: User ${updateData.authorId} cannot update post owned by ${postToUpdate.author.id}`);
-         throw new Error("Unauthorized"); // Or return null/error response in API
+    // **Authorization Check**: Ensure the currentUserId matches the post's author OR user is admin
+    if (postToUpdate.author.id !== updateData.currentUserId && currentUser?.role !== 'admin') {
+         console.error(`[Mock DB] Authorization failed: User ${updateData.currentUserId} cannot update post owned by ${postToUpdate.author.id}`);
+         throw new Error("Unauthorized: You don't have permission to edit this post.");
     }
 
-    // Preserve original fields not being updated
-    const updatedPost: Post = {
-        ...postToUpdate, // Start with existing post data
-        ...updateData,   // Apply updates from updateData
-        updatedAt: new Date(), // Always update the updatedAt field
+    const { currentUserId, ...restUpdateData } = updateData; // Remove currentUserId before merging
+
+    const updatedPost = {
+        ...postToUpdate,
+        ...restUpdateData,
+        updatedAt: new Date(),
         // Re-generate excerpt if content changed and no explicit excerpt provided
-        excerpt: (updateData.content && !updateData.excerpt)
-                   ? updateData.content.substring(0, 150) + '...'
-                   : updateData.excerpt ?? postToUpdate.excerpt,
+        excerpt: restUpdateData.content && !restUpdateData.excerpt ? restUpdateData.content.substring(0, 150) + '...' : restUpdateData.excerpt ?? postToUpdate.excerpt,
+        // Generate new slug ONLY if title changed
+        slug: restUpdateData.title && restUpdateData.title !== postToUpdate.title
+            ? generateSlug(restUpdateData.title, postToUpdate.id)
+            : postToUpdate.slug,
     };
 
-    posts[postIndex] = updatedPost; // Replace the old post with the updated one
-    console.log(`[Mock DB] Post updated: ${updatedPost.title} (Slug: ${slug})`);
+    // Keep original author object unless specifically changed (not typical)
+    updatedPost.author = postToUpdate.author;
 
-    // Fetch potentially updated author details (name might change etc) - Although author doesn't change on post update typically
+    posts[postIndex] = updatedPost;
+    console.log(`[Mock DB] Post updated: ${updatedPost.title} (New Slug: ${updatedPost.slug})`);
+
+    // Fetch potentially updated author details (name might change etc)
     const author = await findUserById(updatedPost.author.id);
     return { ...updatedPost, author: createAuthorObject(author) };
 };
 
-
-export const deletePost = async (slug: string, authorId: string): Promise<boolean> => {
-    console.log(`[Mock DB] Attempting to delete post with slug: ${slug} by user: ${authorId}`);
+export const deletePost = async (slug: string, currentUserId: string): Promise<boolean> => {
+    console.log(`[Mock DB] Deleting post with slug: ${slug} by user: ${currentUserId}`);
+    await new Promise(res => setTimeout(res, 100)); // Simulate delay
     const postIndex = posts.findIndex(p => p.slug === slug);
     if (postIndex === -1) {
         console.log(`[Mock DB] Post not found for delete: ${slug}`);
-        return false; // Indicate post not found
+        return false;
     }
 
-    // **Authorization Check**: Ensure the authorId matches the post's author OR user is admin
-    const user = await findUserById(authorId);
+    // **Authorization Check**: Ensure the currentUserId matches the post's author OR user is admin
+    const currentUser = await findUserById(currentUserId);
     const postAuthorId = posts[postIndex].author.id;
 
-    if (postAuthorId !== authorId && user?.role !== 'admin') {
-        console.error(`[Mock DB] Authorization failed: User ${authorId} (Role: ${user?.role}) cannot delete post owned by ${postAuthorId}`);
-        throw new Error("Unauthorized"); // Throw error for unauthorized access
+    if (postAuthorId !== currentUserId && currentUser?.role !== 'admin') {
+        console.error(`[Mock DB] Authorization failed: User ${currentUserId} (Role: ${currentUser?.role}) cannot delete post owned by ${postAuthorId}`);
+        throw new Error("Unauthorized: You don't have permission to delete this post.");
     }
 
-    posts.splice(postIndex, 1); // Remove the post from the array
+    posts.splice(postIndex, 1);
     console.log(`[Mock DB] Post deleted: ${slug}`);
-    return true; // Indicate successful deletion
+    return true;
 };
 
 
-// --- Seed Data (Ensure bcrypt is available) ---
+// --- Seed Data (Optional) ---
 const seedData = async () => {
-     console.log("[Mock DB] Seeding data...");
-     try {
-         // Use static IDs for predictability in mock
-         const adminId = 'admin-user-001';
-         const bobId = 'user-bob-002';
-         const aliceId = 'user-alice-003';
+    // Check if admin already exists
+    const existingAdmin = await findUserByEmail('vedansh2821@gmail.com');
+    if (existingAdmin) {
+        console.log("[Mock DB] Admin user already exists, skipping seeding.");
+        return; // Don't re-seed if admin exists
+    }
 
-         // Hash passwords securely
-         const adminPasswordHash = await bcrypt.hash('adminpassword', 10);
-         const bobPasswordHash = await bcrypt.hash('password123', 10);
-         const alicePasswordHash = await bcrypt.hash('password456', 10);
+    console.log("[Mock DB] Seeding initial data...");
 
+    // Hash passwords
+    const adminPasswordHash = await bcrypt.hash('adminpassword', 10);
+    const bobPasswordHash = await bcrypt.hash('password123', 10);
+    const alicePasswordHash = await bcrypt.hash('password456', 10);
 
-         // Create admin user
-         await createUser({
-             id: adminId, // Assign static ID
-             email: 'vedansh2821@gmail.com',
-             name: 'Admin User',
-             role: 'admin',
-             hashedPassword: adminPasswordHash,
-             photoURL: 'https://i.pravatar.cc/150?u=admin',
-         });
-         console.log("[Mock DB] Admin user created.");
+    // Create admin user
+    const adminUser = await createUser({
+        email: 'vedansh2821@gmail.com',
+        name: 'Vedansh',
+        role: 'admin',
+        hashedPassword: adminPasswordHash,
+        photoURL: 'https://i.pravatar.cc/150?u=vedansh',
+    });
+    // Create regular users
+    const user1 = await createUser({
+        email: 'bob@example.com',
+        name: 'Bob The Builder',
+        role: 'user',
+        hashedPassword: bobPasswordHash,
+        photoURL: 'https://i.pravatar.cc/150?u=bob',
+    });
+    const user2 = await createUser({
+        email: 'alice@example.com',
+        name: 'Alice Wonderland',
+        role: 'user',
+        hashedPassword: alicePasswordHash,
+        photoURL: 'https://i.pravatar.cc/150?u=alice',
+    });
 
-         // Create regular users
-         const user1 = await createUser({
-             id: bobId, // Assign static ID
-             email: 'bob@example.com',
-             name: 'Bob',
-             role: 'user',
-             hashedPassword: bobPasswordHash,
-             photoURL: 'https://i.pravatar.cc/150?u=bob',
-         });
-         console.log("[Mock DB] Bob user created.");
+    // Create posts
+    await createPost({
+        title: "The Future of AI",
+        content: "<p>Artificial intelligence is rapidly evolving. In this post, we explore the potential breakthroughs and ethical considerations surrounding AI development.</p> <p>From machine learning advancements to the quest for artificial general intelligence (AGI), the landscape is constantly shifting.</p> <h2>Key Areas</h2> <ul><li>Natural Language Processing</li><li>Computer Vision</li><li>Reinforcement Learning</li></ul>",
+        category: "Technology",
+        authorId: adminUser.id, // Admin post
+        imageUrl: 'https://picsum.photos/seed/ai-future/1200/600',
+        tags: ['AI', 'Machine Learning', 'Future Tech'],
+        excerpt: "Exploring the potential breakthroughs and ethical considerations surrounding AI development..."
+    });
+    await createPost({
+        title: "Minimalist Living Guide",
+        content: "<p>Discover the benefits of minimalism and how decluttering your life can lead to greater focus and happiness.</p><p>We'll cover practical steps to start your minimalist journey, from your wardrobe to your digital life.</p>",
+        category: "Lifestyle",
+        authorId: user2.id, // Alice's post
+         imageUrl: 'https://picsum.photos/seed/minimalism/1200/600',
+         tags: ['Minimalism', 'Simple Living', 'Wellbeing'],
+         excerpt: "Discover the benefits of minimalism and how decluttering your life can lead to greater focus..."
+    });
+    await createPost({
+        title: "10 Healthy Habits for a Better Life",
+        content: "<p>Incorporating small, consistent healthy habits can make a big difference. Learn 10 actionable tips you can start today.</p>",
+        category: "Health",
+        authorId: user1.id, // Bob's post
+         imageUrl: 'https://picsum.photos/seed/healthyhabits/1200/600',
+         tags: ['Health', 'Wellness', 'Habits'],
+         excerpt: "Learn 10 actionable healthy habits you can start implementing today for a better life..."
+    });
+     await createPost({
+        title: "Exploring the Swiss Alps",
+        content: "<p>A breathtaking journey through the mountains, lakes, and charming villages of Switzerland.</p>",
+        category: "Travel",
+        authorId: user2.id, // Alice's post
+         imageUrl: 'https://picsum.photos/seed/switzerland/1200/600',
+         tags: ['Travel', 'Switzerland', 'Mountains', 'Europe'],
+         excerpt: "A breathtaking journey through the mountains, lakes, and charming villages of Switzerland..."
+    });
+      await createPost({
+        title: "Introduction to React Server Components",
+        content: "<p>Understanding the new paradigm shift in React development with Server Components.</p>",
+        category: "Technology",
+        authorId: adminUser.id, // Admin post
+         imageUrl: 'https://picsum.photos/seed/react-rsc/1200/600',
+         tags: ['React', 'Web Development', 'Server Components', 'Next.js'],
+         excerpt: "Understanding the new paradigm shift in React development with Server Components..."
+    });
+    // Add more posts as needed...
 
-         const user2 = await createUser({
-             id: aliceId, // Assign static ID
-             email: 'alice@example.com',
-             name: 'Alice',
-             role: 'user',
-             hashedPassword: alicePasswordHash,
-             photoURL: 'https://i.pravatar.cc/150?u=alice',
-         });
-          console.log("[Mock DB] Alice user created.");
+    console.log("[Mock DB] Seed data creation complete.");
+};
 
-         // Create posts with predictable slugs
-         await createPost({
-             title: "First Post by Bob",
-             content: "<p>This is Bob's <strong>first</strong> blog post content. It talks about technology.</p> <ul><li>Item 1</li><li>Item 2</li></ul> <p>Some more text here.</p>",
-             category: "Technology",
-             authorId: user1.id, // Use Bob's ID
-             imageUrl: `https://picsum.photos/seed/firstpostbob/1200/600`,
-             tags: ["getting started", "tech"],
-             excerpt: "Bob's first post dives into technology topics...", // Manually set excerpt
-         });
-         await createPost({
-              title: "Alice's Thoughts on Lifestyle",
-              content: "<p>Exploring minimalism and <em>intentional living</em>.</p><blockquote>\"Less is more.\"</blockquote><p>A journey towards simplicity.</p>",
-              category: "Lifestyle",
-              authorId: user2.id, // Use Alice's ID
-              imageUrl: `https://picsum.photos/seed/alicelifestyle/1200/600`,
-              tags: ["minimalism", "philosophy"],
-              excerpt: "Alice shares her perspective on lifestyle design...",
-          });
-          await createPost({
-               title: "Another Tech Update by Bob",
-               content: "<p>More content about technology trends. Let's discuss <code>React</code> and <code>Next.js</code>.</p><p>Keeping up with the pace of innovation.</p>",
-               category: "Technology",
-               authorId: user1.id, // Use Bob's ID
-               imageUrl: `https://picsum.photos/seed/bobtechupdate/1200/600`,
-               tags: ["react", "web development", "trends"],
-               excerpt: "Bob provides another update on the latest in tech...",
-           });
-            await createPost({
-                title: "Healthy Habits for Developers",
-                content: "<p>Sitting all day? Here are some tips:</p><ol><li>Stretch regularly.</li><li>Take breaks.</li><li>Stay hydrated.</li></ol>",
-                category: "Health",
-                authorId: user2.id, // Alice's ID
-                imageUrl: `https://picsum.photos/seed/devhealth/1200/600`,
-                tags: ["health", "developer life", "wellness"],
-                excerpt: "Alice discusses essential healthy habits for developers...",
-            });
-         console.log("[Mock DB] Seed posts created.");
-         console.log("[Mock DB] Seed data creation complete.");
-
-     } catch (error) {
-         console.error("[Mock DB] Error seeding data:", error);
-     }
- };
-
- // Initialize seed data only if the users array is empty (ensures it runs only once)
- if (users.length === 0) {
-     seedData();
- }
+// --- Initialize Seed Data ---
+// Check if users array is empty before seeding
+if (users.length === 0 && process.env.NODE_ENV !== 'production') {
+    seedData().catch(error => console.error("[Mock DB] Error seeding data:", error));
+}
