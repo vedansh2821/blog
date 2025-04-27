@@ -5,50 +5,45 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Calendar, User, MessageSquare, Share2, Facebook, Twitter, Linkedin } from 'lucide-react';
+import { Calendar, MessageSquare, Share2, Facebook, Twitter, Linkedin } from 'lucide-react'; // Removed User icon as author block links now
 import { format } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
+import type { Post } from '@/types/blog'; // Import the Post type
+
 
 interface BlogPostCardProps {
-  post: {
-    id: string;
-    title: string;
-    slug: string;
-    excerpt: string;
-    imageUrl: string;
-    category: string;
-    author: {
-      name: string;
-      avatarUrl: string;
-    };
-    publishedAt: Date;
-    commentCount: number;
-  };
+  post: Post; // Use the imported Post type
 }
 
 export default function BlogPostCard({ post }: BlogPostCardProps) {
   const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/blogs/${post.slug}` : `/blogs/${post.slug}`;
   const shareTitle = post.title;
 
+  // Ensure publishedAt is a Date object for formatting
+   const publishedDate = post.publishedAt instanceof Date ? post.publishedAt : new Date(post.publishedAt);
+
+
   return (
     <Card className="group overflow-hidden shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full">
       <CardHeader className="p-0">
         <div className="relative h-48 w-full overflow-hidden">
-          <Image
-            src={post.imageUrl}
-            alt={post.title}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            priority={false} // Lazy load by default
-            loading="lazy" // Explicitly set lazy loading
-          />
-           <Badge variant="secondary" className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm">
+          <Link href={`/blogs/${post.slug}`} className="block h-full w-full">
+             <Image
+                src={post.imageUrl || `https://picsum.photos/seed/${post.id}/600/400`} // Provide fallback image
+                alt={post.title}
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                priority={false}
+                loading="lazy"
+              />
+          </Link>
+           <Badge variant="secondary" className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm pointer-events-none">
              {post.category}
            </Badge>
         </div>
@@ -63,24 +58,30 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
           {post.excerpt}
         </CardDescription>
          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-           <div className="flex items-center gap-1">
-             <Link href={`/authors/${post.author.name.toLowerCase().replace(' ', '-')}`} className="flex items-center gap-1 hover:text-primary transition-colors">
-                <Avatar className="h-5 w-5">
-                  <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
-                  <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <span>{post.author.name}</span>
-              </Link>
-           </div>
+           {/* Author Link */}
+           {post.author && (
+             <div className="flex items-center gap-1">
+               <Link href={`/authors/${post.author.slug}`} className="flex items-center gap-1 hover:text-primary transition-colors">
+                  <Avatar className="h-5 w-5">
+                    <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                    <AvatarFallback>{post.author.name?.charAt(0) || 'A'}</AvatarFallback>
+                  </Avatar>
+                  <span>{post.author.name || 'Unknown'}</span>
+                </Link>
+             </div>
+           )}
+           {/* Date */}
            <div className="flex items-center gap-1">
               <Calendar className="h-3 w-3" />
-              <time dateTime={post.publishedAt.toISOString()}>
-                {format(post.publishedAt, 'MMM d, yyyy')}
+              <time dateTime={publishedDate.toISOString()}>
+                 {/* Check if publishedDate is valid before formatting */}
+                {isValid(publishedDate) ? format(publishedDate, 'MMM d, yyyy') : 'Invalid Date'}
               </time>
             </div>
+           {/* Comment Count */}
            <div className="flex items-center gap-1">
              <MessageSquare className="h-3 w-3" />
-             <span>{post.commentCount}</span>
+             <span>{post.commentCount ?? 0}</span> {/* Use nullish coalescing for default */}
            </div>
          </div>
       </CardContent>
@@ -100,31 +101,18 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
               </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')}
-              className="cursor-pointer"
-            >
-              <Facebook className="mr-2 h-4 w-4" />
-              <span>Facebook</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-               onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')}
-               className="cursor-pointer"
-            >
-              <Twitter className="mr-2 h-4 w-4" />
-              <span>Twitter</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-               onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')}
-               className="cursor-pointer"
-            >
-              <Linkedin className="mr-2 h-4 w-4" />
-              <span>LinkedIn</span>
-            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> <span>Facebook</span> </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> <span>Twitter</span> </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> <span>LinkedIn</span> </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
       </CardFooter>
     </Card>
   );
+}
+
+// Helper function to check if a date is valid
+function isValid(date: Date) {
+  return date instanceof Date && !isNaN(date.getTime());
 }
