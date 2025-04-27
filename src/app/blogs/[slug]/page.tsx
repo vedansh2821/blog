@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -12,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, ThumbsDown, Share2, Facebook, Twitter, Linkedin } from 'lucide-react';
+import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, ThumbsDown, Share2, Facebook, Twitter, Linkedin, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import BlogPostCard from '@/components/blog-post-card'; // Re-use for related posts
 import {
@@ -22,6 +23,7 @@ import {
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { Label } from '@/components/ui/label'; // Import Label
 
 
 // Mock Data - Replace with actual data fetching
@@ -69,39 +71,90 @@ interface RelatedPost {
     commentCount: number;
 }
 
+// Helper function to create mock author
+const createMockAuthor = (index: number): Author => {
+    const names = ['Alice', 'Bob', 'Charlie'];
+    const name = names[index % 3];
+    const slug = name.toLowerCase();
+    return {
+        name: name,
+        slug: slug,
+        avatarUrl: `https://i.pravatar.cc/80?u=author${index % 3}`,
+        bio: `This is a short bio for ${name}. They write about various interesting topics.`,
+        socialLinks: [
+            { platform: 'twitter', url: '#' },
+            { platform: 'linkedin', url: '#' },
+        ]
+    };
+};
+
+// Helper function to create mock post data
+const createMockPost = (postId: number | string, slug: string, override: Partial<Post> = {}): Post => {
+    const numericId = typeof postId === 'string' ? Math.abs(postId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 50 : postId; // Generate pseudo-id for string slugs
+    const author = createMockAuthor(numericId);
+    const basePost: Post = {
+        id: `post-${postId}`,
+        title: `Blog Post ${postId}`,
+        slug: slug,
+        content: `<p>This is the main content for <strong>Blog Post ${postId}</strong>. It discusses various aspects related to the topic, providing insights and information.</p><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>A Subheading</h2><p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p><figure class="my-6"><img src="https://picsum.photos/seed/${slug}/800/400" alt="Related image" class="rounded-lg mx-auto" /><figcaption class="text-center text-sm text-muted-foreground mt-2">A caption for the image.</figcaption></figure><h3>Another Level</h3><p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>`,
+        imageUrl: `https://picsum.photos/seed/${slug}/1200/600`,
+        category: ['Technology', 'Lifestyle', 'Health', 'Travel'][numericId % 4],
+        author: author,
+        publishedAt: new Date(Date.now() - numericId * 24 * 60 * 60 * 1000),
+        commentCount: Math.floor(Math.random() * 50),
+        tags: ['tag1', 'tag2', `topic${numericId % 3}`],
+        rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Ensure number
+        views: Math.floor(Math.random() * 10000) + 500,
+    };
+    return { ...basePost, ...override };
+};
+
+
 const fetchPostDetails = async (slug: string): Promise<Post | null> => {
   await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
 
-  // Find post based on slug (in real app, fetch from API: /api/posts/${slug})
-  const postId = parseInt(slug.split('-').pop() || '1'); // Extract ID from slug for mock
-  if (isNaN(postId) || postId < 1) return null;
+  // Handle specific popular post slugs first
+  if (slug === 'future-of-ai') {
+    return createMockPost(slug, slug, {
+      title: 'The Future of AI',
+      category: 'Technology',
+      content: `<p>Exploring the rapid advancements and potential impact of Artificial Intelligence across various industries. What does the future hold?</p><p>Content about AI trends...</p>`,
+      imageUrl: `https://picsum.photos/seed/future-of-ai/1200/600`,
+      author: createMockAuthor(0), // Assign Alice for consistency maybe
+    });
+  }
+  if (slug === 'minimalist-living') {
+    return createMockPost(slug, slug, {
+      title: 'Minimalist Living Guide',
+      category: 'Lifestyle',
+      content: `<p>A practical guide to embracing minimalism. Declutter your space, simplify your life, and find more joy in less.</p><p>Tips on decluttering...</p>`,
+      imageUrl: `https://picsum.photos/seed/minimalist-living/1200/600`,
+       author: createMockAuthor(1), // Assign Bob
+    });
+  }
+  if (slug === 'healthy-habits') {
+     return createMockPost(slug, slug, {
+       title: '10 Healthy Habits',
+       category: 'Health',
+       content: `<p>Discover 10 simple yet powerful habits you can incorporate into your daily routine for better physical and mental well-being.</p><p>List of habits...</p>`,
+       imageUrl: `https://picsum.photos/seed/healthy-habits/1200/600`,
+       author: createMockAuthor(2), // Assign Charlie
+     });
+  }
 
-  const author: Author = {
-    name: ['Alice', 'Bob', 'Charlie'][postId % 3],
-    slug: ['alice', 'bob', 'charlie'][postId % 3],
-    avatarUrl: `https://i.pravatar.cc/80?u=author${postId % 3}`,
-    bio: `This is a short bio for ${['Alice', 'Bob', 'Charlie'][postId % 3]}. They write about various interesting topics.`,
-    socialLinks: [
-        {platform: 'twitter', url: '#'},
-        {platform: 'linkedin', url: '#'},
-    ]
-  };
+  // Fallback: Try parsing ID for slugs like 'blog-post-title-X'
+  const parts = slug.split('-');
+  const potentialId = parseInt(parts[parts.length - 1]);
 
-  return {
-    id: `post-${postId}`,
-    title: `Blog Post Title ${postId}`,
-    slug: slug,
-    content: `<p>This is the main content for <strong>Blog Post ${postId}</strong>. It discusses various aspects related to the topic, providing insights and information.</p><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>A Subheading</h2><p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p><figure class="my-6"><img src="https://picsum.photos/seed/${postId+10}/800/400" alt="Related image" class="rounded-lg mx-auto" /><figcaption class="text-center text-sm text-muted-foreground mt-2">A caption for the image.</figcaption></figure><h3>Another Level</h3><p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>`,
-    imageUrl: `https://picsum.photos/seed/${postId}/1200/600`,
-    category: ['Technology', 'Lifestyle', 'Health', 'Travel'][postId % 4],
-    author: author,
-    publishedAt: new Date(Date.now() - postId * 24 * 60 * 60 * 1000),
-    commentCount: Math.floor(Math.random() * 50),
-    tags: ['tag1', 'tag2', `topic${postId % 3}`],
-    rating: (Math.random() * 2 + 3).toFixed(1), // Random rating between 3.0 and 5.0
-    views: Math.floor(Math.random() * 10000) + 500,
-  };
+  if (!isNaN(potentialId) && potentialId >= 1) {
+    return createMockPost(potentialId, slug);
+  }
+
+  // If slug format is unknown and not one of the hardcoded ones
+  console.warn(`Could not parse ID or find hardcoded match for slug: ${slug}`);
+  return null; // Post not found for other formats
 };
+
 
 const fetchComments = async (postId: string): Promise<Comment[]> => {
     await new Promise(resolve => setTimeout(resolve, 400));
@@ -283,11 +336,16 @@ export default function BlogPostPage() {
 
     const loadData = async () => {
       setLoading(true);
+      setPost(null); // Reset post state before fetching
+      setComments([]);
+      setRelatedPosts([]);
       try {
+        console.log(`Fetching post details for slug: ${slug}`);
         const postData = await fetchPostDetails(slug);
         setPost(postData);
 
         if (postData) {
+          console.log(`Post found: ${postData.title}`);
           const [commentsData, relatedPostsData] = await Promise.all([
             fetchComments(postData.id),
             fetchRelatedPosts(postData.category, postData.id)
@@ -297,6 +355,12 @@ export default function BlogPostPage() {
         } else {
           // Handle post not found (redirect or show 404 component)
           console.error("Post not found");
+           toast({
+               title: "Post Not Found",
+               description: "The requested blog post could not be found.",
+               variant: "destructive",
+           });
+           // Consider redirecting: router.push('/404');
         }
       } catch (error) {
         console.error("Failed to load post data:", error);
@@ -311,7 +375,7 @@ export default function BlogPostPage() {
     };
 
     loadData();
-  }, [slug, toast]);
+  }, [slug, toast]); // Add toast to dependency array
 
   const handleCommentSubmit = (newComment: Comment) => {
       // If it's a reply
@@ -355,7 +419,13 @@ export default function BlogPostPage() {
           description: `You rated this post ${rating} stars.`,
         });
         // Update UI optimistically if needed
-         setPost(prevPost => prevPost ? {...prevPost, rating: ((prevPost.rating || 0) + rating) / 2} : null); // simplistic average update
+         setPost(prevPost => {
+            if (!prevPost) return null;
+            const currentRating = prevPost.rating ?? 0;
+            // More realistic would involve storing count and total, but for mock:
+            const newAvgRating = (currentRating + rating) / 2;
+            return {...prevPost, rating: parseFloat(newAvgRating.toFixed(1))}
+         });
     };
 
   if (loading) {
@@ -363,8 +433,8 @@ export default function BlogPostPage() {
   }
 
   if (!post) {
-    // TODO: Render a proper 404 component or redirect
-    return <div className="container mx-auto py-8 text-center">Post not found.</div>;
+    // Render a message or redirect if post is definitively not found after loading
+     return <div className="container mx-auto py-8 text-center text-muted-foreground">Post not found or failed to load.</div>;
   }
 
   const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
@@ -393,15 +463,15 @@ export default function BlogPostPage() {
                  <MessageSquare className="h-4 w-4" />
                  <span>{post.commentCount} Comments</span>
                </div>
-              {post.rating && (
+              {post.rating != null && ( // Check for null or undefined
                 <div className="flex items-center gap-1">
                     <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                    <span>{post.rating}</span>
+                    <span>{post.rating.toFixed(1)}</span> {/* Ensure fixed decimal */}
                 </div>
                 )}
-              {post.views && (
+              {post.views != null && ( // Check for null or undefined
                    <div className="flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-eye"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      <Eye className="h-4 w-4" />
                       <span>{post.views} Views</span>
                     </div>
                 )}
@@ -444,7 +514,7 @@ export default function BlogPostPage() {
                 <div className="flex gap-1">
                     {[1, 2, 3, 4, 5].map(star => (
                         <Button key={star} variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-yellow-500" onClick={() => handleRatePost(star)}>
-                            <Star className={`h-5 w-5 ${ (post.rating && star <= Math.round(post.rating)) ? 'fill-yellow-500 text-yellow-500' : '' }`} />
+                            <Star className={`h-5 w-5 ${ (post.rating != null && star <= Math.round(post.rating)) ? 'fill-yellow-500 text-yellow-500' : '' }`} />
                         </Button>
                     ))}
                  </div>
