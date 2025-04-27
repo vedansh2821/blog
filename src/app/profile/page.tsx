@@ -36,6 +36,11 @@ const fetchUserPosts = async (userId: string): Promise<Post[]> => {
             ...post,
             publishedAt: new Date(post.publishedAt),
             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+             // Ensure nested author has date object if present
+             author: {
+                 ...post.author,
+                 joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
+             },
         }));
     } catch (error) {
         console.error('[Profile] Error fetching user posts:', error);
@@ -44,13 +49,21 @@ const fetchUserPosts = async (userId: string): Promise<Post[]> => {
 };
 
 // Function to fetch all users (for admin)
-const fetchAllUsers = async (): Promise<AuthUser[]> => {
+const fetchAllUsers = async (requestingUserId: string): Promise<AuthUser[]> => {
     console.log('[Profile] Fetching all users for admin.');
     try {
-        const response = await fetch('/api/users'); // Assuming an API endpoint exists
+        const response = await fetch('/api/users', {
+            headers: {
+                // Include the requesting user's ID for server-side authorization check
+                 'X-Mock-User-ID': requestingUserId,
+             }
+        });
         if (!response.ok) {
-            throw new Error('Failed to fetch users');
-        }
+            const errorBody = await response.text();
+            console.error("Failed to fetch users - Response status:", response.status);
+            console.error("Failed to fetch users - Response body:", errorBody);
+             throw new Error(`Failed to fetch users: ${response.statusText}`);
+         }
         const usersData: AuthUser[] = await response.json();
         // Ensure dates are formatted correctly if necessary (mock DB already handles it)
          return usersData.map(user => ({
@@ -59,7 +72,7 @@ const fetchAllUsers = async (): Promise<AuthUser[]> => {
          }));
     } catch (error) {
         console.error('[Profile] Error fetching all users:', error);
-        return [];
+        throw error; // Re-throw to be caught by caller
     }
 }
 
@@ -111,9 +124,13 @@ export default function ProfilePage() {
            // If user is admin, fetch all users
            if (currentUser.role === 'admin') {
                 setLoadingUsers(true);
-                fetchAllUsers()
+                // Pass the current user's ID for authorization in the API call
+                fetchAllUsers(currentUser.id)
                      .then(setAllUsers)
-                     .catch(err => toast({ title: "Error Loading Users", description: "Could not fetch user list.", variant: "destructive"}))
+                     .catch(err => {
+                         console.error("Error caught in component fetching all users:", err);
+                         toast({ title: "Error Loading Users", description: err instanceof Error ? err.message : "Could not fetch user list.", variant: "destructive"})
+                      })
                      .finally(() => setLoadingUsers(false));
            }
       }
