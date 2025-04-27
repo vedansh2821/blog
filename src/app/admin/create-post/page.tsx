@@ -75,8 +75,15 @@ export default function CreatePostPage() {
         setIsSubmitting(true);
         try {
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+
+            // Ensure subheadings and paragraphs are arrays of strings
+            const subheadingsArray = Array.isArray(data.subheadings) ? data.subheadings.filter(s => typeof s === 'string' && s.trim()) : [];
+            const paragraphsArray = Array.isArray(data.paragraphs) ? data.paragraphs.filter(p => typeof p === 'string' && p.trim()) : [];
+
             const postData = {
                 ...data,
+                subheadings: subheadingsArray,
+                paragraphs: paragraphsArray,
                 tags: tagsArray,
                 requestingUserId: currentUser.id, // Include the user ID for the API
             };
@@ -193,7 +200,11 @@ export default function CreatePostPage() {
                                 placeholder="e.g., Introduction, Main Points, Conclusion"
                                 disabled={isSubmitting}
                                 {...register('subheadings', {
-                                    setValueAs: (value) => value ? value.split(',').map(s => s.trim()) : []
+                                    // Convert the input string to an array of strings
+                                    setValueAs: (value) =>
+                                        typeof value === 'string' && value.trim()
+                                            ? value.split(',').map(s => s.trim()).filter(s => s)
+                                            : [], // Return empty array if not a non-empty string
                                 })}
                             />
                             {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
@@ -206,7 +217,11 @@ export default function CreatePostPage() {
                                 placeholder="Write your blog post content here..."
                                 disabled={isSubmitting}
                                 {...register('paragraphs', {
-                                    setValueAs: (value) => value ? value.split('\n').map(p => p.trim()).filter(p => p) : []
+                                    // Convert the input string (from textarea) to an array of strings
+                                    setValueAs: (value) =>
+                                        typeof value === 'string' && value.trim()
+                                            ? value.split('\n').map(p => p.trim()).filter(p => p)
+                                            : [], // Return empty array if not a non-empty string
                                 })}
                             />
                             {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}

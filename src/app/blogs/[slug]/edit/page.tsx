@@ -45,7 +45,17 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
             if (response.status === 404) return null;
             throw new Error('Failed to fetch post data');
         }
-        return await response.json();
+        const data = await response.json();
+         // Convert date strings to Date objects before returning
+        return {
+            ...data,
+            publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(),
+            updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined,
+            author: data.author ? {
+                 ...data.author,
+                 joinedAt: data.author.joinedAt ? new Date(data.author.joinedAt) : undefined,
+             } : undefined, // Make sure author is correctly typed or handled if missing
+        };
     } catch (error) {
         console.error("Error fetching post details:", error);
         return null;
@@ -68,6 +78,16 @@ export default function EditPostPage() {
 
     const { register, handleSubmit, formState: { errors }, control, reset, setValue } = useForm<PostFormInputs>({
         resolver: zodResolver(postFormSchema),
+         defaultValues: { // Add default values
+            title: '',
+            category: undefined,
+            heading: '',
+            subheadings: [],
+            paragraphs: [],
+            excerpt: '',
+            imageUrl: '',
+            tags: '',
+        },
     });
 
     // Fetch post data and check authorization
@@ -107,7 +127,8 @@ export default function EditPostPage() {
             reset({
                 title: fetchedPost.title,
                 category: fetchedPost.category as PostFormInputs['category'], // Cast category
-                heading: fetchedPost.heading,
+                heading: fetchedPost.heading || '', // Provide default empty string
+                // Convert arrays to strings for the input fields
                 subheadings: fetchedPost.subheadings?.join(', ') || '',
                 paragraphs: fetchedPost.paragraphs?.join('\n') || '',
                 excerpt: fetchedPost.excerpt || '',
@@ -132,15 +153,21 @@ export default function EditPostPage() {
         setIsSubmitting(true);
         try {
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+
+            // Ensure subheadings and paragraphs are arrays of strings
+            const subheadingsArray = Array.isArray(data.subheadings) ? data.subheadings.filter(s => typeof s === 'string' && s.trim()) : [];
+            const paragraphsArray = Array.isArray(data.paragraphs) ? data.paragraphs.filter(p => typeof p === 'string' && p.trim()) : [];
+
+
             // Only send fields that are part of the form schema + requestingUserId
             const updatePayload = {
                 title: data.title,
                 category: data.category,
                 heading: data.heading,
-                subheadings: data.subheadings,
-                paragraphs: data.paragraphs,
+                subheadings: subheadingsArray, // Send the processed array
+                paragraphs: paragraphsArray,   // Send the processed array
                 excerpt: data.excerpt,
-                imageUrl: data.imageUrl,
+                imageUrl: data.imageUrl, // TODO: Handle image upload separately
                 tags: tagsArray,
                 requestingUserId: currentUser.id, // Include user ID for API authorization
             };
@@ -213,8 +240,10 @@ export default function EditPostPage() {
         const file = e.target.files?.[0];
         if (file) {
             setSelectedImage(file);
-            // Set image URL to empty string, to prevent validation error for URL format
+            // TODO: Implement image upload logic here (e.g., to Firebase Storage)
+            // For now, just clear the imageUrl input if a file is selected
             setValue('imageUrl', '', { shouldValidate: true });
+            toast({title: "Image Selected", description: "Image upload functionality not yet implemented. URL field cleared."})
         } else {
             setSelectedImage(null);
         }
@@ -269,7 +298,11 @@ export default function EditPostPage() {
                                 placeholder="e.g., Introduction, Main Points, Conclusion"
                                 disabled={isSubmitting}
                                 {...register('subheadings', {
-                                    setValueAs: (value) => value ? value.split(',').map(s => s.trim()) : []
+                                    // Convert the input string to an array of strings
+                                     setValueAs: (value) =>
+                                         typeof value === 'string' && value.trim()
+                                             ? value.split(',').map(s => s.trim()).filter(s => s)
+                                             : [], // Return empty array if not a non-empty string
                                 })}
                             />
                             {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
@@ -282,33 +315,45 @@ export default function EditPostPage() {
                                 placeholder="Write your blog post content here..."
                                 disabled={isSubmitting}
                                 {...register('paragraphs', {
-                                    setValueAs: (value) => value ? value.split('\n').map(p => p.trim()).filter(p => p) : []
+                                    // Convert the input string (from textarea) to an array of strings
+                                    setValueAs: (value) =>
+                                        typeof value === 'string' && value.trim()
+                                            ? value.split('\n').map(p => p.trim()).filter(p => p)
+                                            : [], // Return empty array if not a non-empty string
                                 })}
                             />
                             {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
                         </div>
 
                         <div>
-                            <Label htmlFor="imageUrl">Image</Label>
-                            {/* Image Upload */}
-                            <Input
-                                id="imageUrl"
-                                type="file"
-                                accept="image/*"
-                                disabled={isSubmitting}
-                                onChange={handleImageChange}
-                            />
-                            {/* Display Selected Image */}
-                            {selectedImage && (
-                                <div className="mt-2">
-                                    <img
-                                        src={URL.createObjectURL(selectedImage)}
-                                        alt="Selected"
-                                        className="max-h-40 rounded-md shadow-sm"
-                                    />
-                                </div>
-                            )}
-                            {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
+                            <Label htmlFor="excerpt">Excerpt (Optional)</Label>
+                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="A short summary of the post (10-200 characters)." disabled={isSubmitting} />
+                            {errors.excerpt && <p className="text-xs text-destructive mt-1">{errors.excerpt.message}</p>}
+                        </div>
+
+
+                        <div>
+                            <Label htmlFor="image">Image</Label>
+                            <div className="flex items-center gap-4">
+                                <Input
+                                    id="image"
+                                    type="file"
+                                    accept="image/*"
+                                    disabled={isSubmitting}
+                                    onChange={handleImageChange}
+                                    className="flex-grow"
+                                />
+                                {postData?.imageUrl && !selectedImage && (
+                                     <img src={postData.imageUrl} alt="Current" className="h-16 w-16 object-cover rounded-md" />
+                                 )}
+                                {selectedImage && (
+                                     <img src={URL.createObjectURL(selectedImage)} alt="Preview" className="h-16 w-16 object-cover rounded-md" />
+                                 )}
+                                {/* TODO: Add Crop Button/Functionality */}
+                                {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop</Button> */}
+                             </div>
+                              <p className="text-xs text-muted-foreground mt-1">Upload a new image to replace the existing one. Cropping functionality is not yet implemented.</p>
+                             {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>} {/* Assuming imageUrl validation is still useful */}
                         </div>
 
                         <div>
