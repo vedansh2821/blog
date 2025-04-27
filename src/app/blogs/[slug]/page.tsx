@@ -117,18 +117,22 @@ const fetchRelatedPosts = async (category: string, currentPostId: string): Promi
   console.log(`[Related] Fetching related posts for category: ${category}, excluding: ${currentPostId}`);
   try {
       // Example API call (adjust API route as needed)
-      const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=3&excludeId=${currentPostId}`);
+      // Exclude the current post ID from the related posts
+      const response = await fetch(`/api/posts?category=${encodeURIComponent(category)}&limit=3`);
       if (!response.ok) {
           throw new Error('Failed to fetch related posts');
       }
       const data = await response.json();
 
-      // Ensure posts array exists and convert date strings
-       const posts = (data.posts || []).map((post: any) => ({
+      // Filter out the current post from the results client-side
+       const posts = (data.posts || [])
+        .filter((post: any) => post.id !== currentPostId)
+        .map((post: any) => ({
             ...post,
             publishedAt: new Date(post.publishedAt),
              // No need for updatedAt in related posts typically
         }));
+
 
       console.log("[Related] Related posts fetched:", posts);
       return posts;
@@ -315,6 +319,7 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
     const [showReplies, setShowReplies] = useState(false);
     const [likes, setLikes] = useState(comment.likes || 0);
     const { currentUser } = useAuth();
+    const { toast } = useToast(); // Need toast here too
 
     const handleLike = () => {
         if(!currentUser) {
@@ -756,4 +761,3 @@ export default function BlogPostPage() {
     </div>
   );
 }
-```
