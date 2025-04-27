@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { UserPlus, Loader2 } from 'lucide-react';
 import { useAuth, type AuthUser } from '@/lib/auth/authContext'; // Import useAuth
+import { Skeleton } from '@/components/ui/skeleton'; // Import Skeleton
 
 const signupFormSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -31,15 +32,23 @@ type SignupFormInputs = z.infer<typeof signupFormSchema>;
 export default function SignupPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { login, currentUser } = useAuth(); // Get login function to log user in after signup
-  const [isLoading, setIsLoading] = useState(false);
+  const { login, currentUser, loading: authLoading } = useAuth(); // Get auth state and loading state
+  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading
 
   const { register, handleSubmit, formState: { errors } } = useForm<SignupFormInputs>({
     resolver: zodResolver(signupFormSchema),
   });
 
+   // Effect to redirect if already logged in
+   useEffect(() => {
+      if (!authLoading && currentUser) {
+          console.log("User already logged in, redirecting to /");
+          router.push('/');
+      }
+  }, [currentUser, authLoading, router]);
+
   const onSubmit: SubmitHandler<SignupFormInputs> = async (data) => {
-    setIsLoading(true);
+    setIsSubmitting(true);
     try {
         // Omit confirmPassword if it exists in the schema before sending
         const { /*confirmPassword,*/ ...signupData } = data;
@@ -65,7 +74,7 @@ export default function SignupPage() {
         description: `Welcome, ${user.name || user.email}! Your account has been created.`,
       });
 
-      router.push('/'); // Redirect to homepage after successful signup
+      // router.push('/'); // Redirect is handled by the useEffect now
 
     } catch (error) {
       console.error("Signup error:", error);
@@ -74,17 +83,35 @@ export default function SignupPage() {
         description: error instanceof Error ? error.message : "An unknown error occurred during signup.",
         variant: "destructive",
       });
-      setIsLoading(false); // Ensure loading is reset on error
+      setIsSubmitting(false); // Ensure loading is reset on error
     }
-     // No need to set loading to false on success because of redirect
+     // No need to set loading to false on success because of redirect handled by useEffect
   };
 
-   // Redirect if already logged in
-   if (currentUser) {
-      router.push('/');
-      return null;
+   // Show loading skeleton or null while auth state is loading or redirecting
+   if (authLoading || currentUser) {
+     return (
+        <div className="container mx-auto flex items-center justify-center min-h-[calc(100vh-10rem)] py-12">
+             <Card className="w-full max-w-md">
+                 <CardHeader>
+                     <Skeleton className="h-6 w-3/4 mx-auto mb-2" />
+                     <Skeleton className="h-4 w-1/2 mx-auto" />
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full mt-2" />
+                 </CardContent>
+                  <CardFooter>
+                      <Skeleton className="h-4 w-3/5 mx-auto" />
+                  </CardFooter>
+             </Card>
+         </div>
+     );
    }
 
+  // Render the signup form only if not loading and not logged in
   return (
     <div className="container mx-auto flex items-center justify-center min-h-[calc(100vh-10rem)] py-12">
       <Card className="w-full max-w-md">
@@ -96,17 +123,17 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
              <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
-              <Input id="name" {...register("name")} disabled={isLoading} autoComplete="name" />
+              <Input id="name" {...register("name")} disabled={isSubmitting} autoComplete="name" />
               {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...register("email")} disabled={isLoading} autoComplete="email" />
+              <Input id="email" type="email" {...register("email")} disabled={isSubmitting} autoComplete="email" />
               {errors.email && <p className="text-xs text-destructive mt-1">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register("password")} disabled={isLoading} autoComplete="new-password" />
+              <Input id="password" type="password" {...register("password")} disabled={isSubmitting} autoComplete="new-password" />
               {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
             </div>
              {/* <div className="space-y-2">
@@ -114,9 +141,9 @@ export default function SignupPage() {
                <Input id="confirmPassword" type="password" {...register("confirmPassword")} disabled={isLoading} />
                {errors.confirmPassword && <p className="text-xs text-destructive mt-1">{errors.confirmPassword.message}</p>}
              </div> */}
-            <Button type="submit" className="w-full" disabled={isLoading}>
-               {isLoading ? <Loader2 className="animate-spin mr-2" /> : <UserPlus className="mr-2 h-4 w-4" />}
-              {isLoading ? "Creating Account..." : "Sign Up"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+               {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <UserPlus className="mr-2 h-4 w-4" />}
+              {isSubmitting ? "Creating Account..." : "Sign Up"}
             </Button>
           </form>
         </CardContent>
