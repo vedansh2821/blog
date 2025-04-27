@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Menu, X, Search, Sun, Moon, Code2, LogIn, LogOut, UserPlus, User, ChevronDown } from 'lucide-react'; // Added ChevronDown
+import { Menu, X, Search, Sun, Moon, Code2, LogIn, LogOut, UserPlus, User, ChevronDown, Gamepad2 } from 'lucide-react'; // Added Gamepad2
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -30,6 +30,7 @@ const navItems = [
   // { name: 'Blogs', href: '/blogs' }, // Replaced by dropdown
   { name: 'About', href: '/about' },
   { name: 'Contact', href: '/contact' },
+  { name: 'Fun', href: '/fun' }, // Added Fun tab
 ];
 
 // Mock categories for dropdown (fetch from API if needed)
@@ -238,9 +239,13 @@ export default function Header() {
            </form>
 
           {/* Theme Toggle */}
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={mounted ? `Switch to ${theme === 'dark' ? 'light' : 'dark'} mode` : 'Toggle theme'} className="h-9 w-9 rounded-full">
-             {mounted ? (theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />) : (<Moon className="h-5 w-5 text-transparent" />)}
-          </Button>
+          {mounted ? (
+             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} className="h-9 w-9 rounded-full">
+                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+             </Button>
+          ) : (
+             <Skeleton className="h-9 w-9 rounded-full" /> // Placeholder while theme is loading
+          )}
 
           {/* Authentication Buttons */}
           {mounted && <AuthButtons />} {/* Render AuthButtons only when mounted */}
@@ -291,4 +296,3 @@ export default function Header() {
     </header>
   );
 }
-
