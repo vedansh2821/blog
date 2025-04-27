@@ -8,6 +8,7 @@ export interface Author {
     bio?: string; // Optional bio
     socialLinks?: { platform: string; url: string }[]; // Optional social links
     website?: string; // Optional website
+    joinedAt: Date | string; // Date the user joined
 }
 
 export interface Comment {
