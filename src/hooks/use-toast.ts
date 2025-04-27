@@ -1,3 +1,4 @@
+
 "use client"
 
 // Inspired by react-hot-toast library
@@ -186,9 +187,10 @@ function useToast() {
 
   return {
     ...state,
-    toast,
+    toast, // Ensure toast function is exported
     dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
   }
 }
 
-export { useToast, toast }
+export { useToast, toast } // Ensure toast function is exported here as well
+

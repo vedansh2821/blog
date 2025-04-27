@@ -2,18 +2,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation'; // Import useRouter
 import Image from 'next/image';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card'; // Removed CardHeader, CardTitle
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, ThumbsDown, Share2, Facebook, Twitter, Linkedin, Eye } from 'lucide-react';
+import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, Share2, Facebook, Twitter, Linkedin, Eye, Edit, Trash2 } from 'lucide-react'; // Added Edit, Trash2 icons
 import { format } from 'date-fns';
 import BlogPostCard from '@/components/blog-post-card'; // Re-use for related posts
 import {
@@ -22,178 +22,93 @@ import {
    DropdownMenuItem,
    DropdownMenuTrigger,
  } from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useToast } from "@/hooks/use-toast";
-import { Label } from '@/components/ui/label'; // Import Label
+import { Label } from '@/components/ui/label';
+import { useAuth } from '@/lib/auth/authContext'; // Import useAuth
+import type { Author, Comment, Post, RelatedPost } from '@/types/blog'; // Import types
 
 
-// Mock Data - Replace with actual data fetching
-interface Author {
-  name: string;
-  slug: string;
-  avatarUrl: string;
-  bio: string;
-  socialLinks?: { platform: string; url: string }[];
-}
+// Mock Data - Replace with actual data fetching functions using /api routes
 
-interface Comment {
-  id: string;
-  author: { name: string; avatarUrl: string };
-  timestamp: Date;
-  content: string;
-  replies: Comment[];
-  likes: number;
-}
-
-interface Post {
-  id: string;
-  title: string;
-  slug: string;
-  content: string; // Assuming HTML content
-  imageUrl: string;
-  category: string;
-  author: Author;
-  publishedAt: Date;
-  commentCount: number;
-  tags?: string[];
-  rating?: number; // Average rating
-  views?: number;
-}
-
-interface RelatedPost {
-    id: string;
-    title: string;
-    slug: string;
-    excerpt: string;
-    imageUrl: string;
-    category: string;
-    author: { name: string; avatarUrl: string };
-    publishedAt: Date;
-    commentCount: number;
-}
-
-// Helper function to create mock author
-const createMockAuthor = (index: number): Author => {
-    const names = ['Alice', 'Bob', 'Charlie'];
-    const name = names[index % 3];
-    const slug = name.toLowerCase();
-    return {
-        name: name,
-        slug: slug,
-        avatarUrl: `https://i.pravatar.cc/80?u=author${index % 3}`,
-        bio: `This is a short bio for ${name}. They write about various interesting topics.`,
-        socialLinks: [
-            { platform: 'twitter', url: '#' },
-            { platform: 'linkedin', url: '#' },
-        ]
-    };
-};
-
-// Helper function to create mock post data
-const createMockPost = (postId: number | string, slug: string, override: Partial<Post> = {}): Post => {
-    const numericId = typeof postId === 'string' ? Math.abs(postId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 50 : postId; // Generate pseudo-id for string slugs
-    const author = createMockAuthor(numericId);
-    const basePost: Post = {
-        id: `post-${postId}`,
-        title: `Blog Post ${postId}`,
-        slug: slug,
-        content: `<p>This is the main content for <strong>Blog Post ${postId}</strong>. It discusses various aspects related to the topic, providing insights and information.</p><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>A Subheading</h2><p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p><figure class="my-6"><img src="https://picsum.photos/seed/${slug}/800/400" alt="Related image" class="rounded-lg mx-auto" /><figcaption class="text-center text-sm text-muted-foreground mt-2">A caption for the image.</figcaption></figure><h3>Another Level</h3><p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>`,
-        imageUrl: `https://picsum.photos/seed/${slug}/1200/600`,
-        category: ['Technology', 'Lifestyle', 'Health', 'Travel'][numericId % 4],
-        author: author,
-        publishedAt: new Date(Date.now() - numericId * 24 * 60 * 60 * 1000),
-        commentCount: Math.floor(Math.random() * 50),
-        tags: ['tag1', 'tag2', `topic${numericId % 3}`],
-        rating: parseFloat((Math.random() * 2 + 3).toFixed(1)), // Ensure number
-        views: Math.floor(Math.random() * 10000) + 500,
-    };
-    return { ...basePost, ...override };
-};
-
-
+// Helper function to create mock post data (already exists, ensure it aligns with Post type)
 const fetchPostDetails = async (slug: string): Promise<Post | null> => {
-  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
-
-  // Handle specific popular post slugs first
-  if (slug === 'future-of-ai') {
-    return createMockPost(slug, slug, {
-      title: 'The Future of AI',
-      category: 'Technology',
-      content: `<p>Exploring the rapid advancements and potential impact of Artificial Intelligence across various industries. What does the future hold?</p><p>Content about AI trends...</p>`,
-      imageUrl: `https://picsum.photos/seed/future-of-ai/1200/600`,
-      author: createMockAuthor(0), // Assign Alice for consistency maybe
-    });
+  console.log(`[fetchPostDetails] Fetching post with slug: ${slug}`);
+  try {
+      const response = await fetch(`/api/posts/${slug}`);
+      if (!response.ok) {
+          if (response.status === 404) {
+              console.log(`[fetchPostDetails] Post not found (404) for slug: ${slug}`);
+              return null;
+          }
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
+      const data: Post = await response.json();
+       // Convert date strings to Date objects
+       data.publishedAt = new Date(data.publishedAt);
+       if (data.updatedAt) data.updatedAt = new Date(data.updatedAt);
+      console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, data);
+      return data;
+  } catch (error) {
+      console.error(`[fetchPostDetails] Error fetching post ${slug}:`, error);
+      return null; // Return null on error
   }
-  if (slug === 'minimalist-living') {
-    return createMockPost(slug, slug, {
-      title: 'Minimalist Living Guide',
-      category: 'Lifestyle',
-      content: `<p>A practical guide to embracing minimalism. Declutter your space, simplify your life, and find more joy in less.</p><p>Tips on decluttering...</p>`,
-      imageUrl: `https://picsum.photos/seed/minimalist-living/1200/600`,
-       author: createMockAuthor(1), // Assign Bob
-    });
-  }
-  if (slug === 'healthy-habits') {
-     return createMockPost(slug, slug, {
-       title: '10 Healthy Habits',
-       category: 'Health',
-       content: `<p>Discover 10 simple yet powerful habits you can incorporate into your daily routine for better physical and mental well-being.</p><p>List of habits...</p>`,
-       imageUrl: `https://picsum.photos/seed/healthy-habits/1200/600`,
-       author: createMockAuthor(2), // Assign Charlie
-     });
-  }
-
-  // Fallback: Try parsing ID for slugs like 'blog-post-title-X'
-  const parts = slug.split('-');
-  const potentialId = parseInt(parts[parts.length - 1]);
-
-  if (!isNaN(potentialId) && potentialId >= 1) {
-    return createMockPost(potentialId, slug);
-  }
-
-  // If slug format is unknown and not one of the hardcoded ones
-  console.warn(`Could not parse ID or find hardcoded match for slug: ${slug}`);
-  return null; // Post not found for other formats
 };
 
 
 const fetchComments = async (postId: string): Promise<Comment[]> => {
-    await new Promise(resolve => setTimeout(resolve, 400));
-    const numComments = Math.floor(Math.random() * 5) + 1;
-    return Array.from({length: numComments}).map((_, i) => ({
-        id: `comment-${postId}-${i}`,
-        author: { name: `User ${i+1}`, avatarUrl: `https://i.pravatar.cc/40?u=commenter${i}`},
-        timestamp: new Date(Date.now() - Math.random() * 5 * 24 * 60 * 60 * 1000),
-        content: `This is comment number ${i+1}. I ${Math.random() > 0.5 ? 'agree' : 'disagree'} with the points made.`,
-        replies: i % 2 === 0 ? Array.from({length: Math.floor(Math.random()*2)+1}).map((_, j) => ({
-             id: `reply-${postId}-${i}-${j}`,
-             author: { name: `Replier ${j+1}`, avatarUrl: `https://i.pravatar.cc/40?u=replier${j}`},
-             timestamp: new Date(Date.now() - Math.random() * 1 * 24 * 60 * 60 * 1000),
-             content: `Replying to comment ${i+1}. My thoughts are...`,
-             replies: [],
-             likes: Math.floor(Math.random() * 5),
-        })) : [],
-        likes: Math.floor(Math.random() * 20),
-    })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  // Replace with API call: /api/comments?postId=...
+  await new Promise(resolve => setTimeout(resolve, 400));
+  const numComments = Math.floor(Math.random() * 5) + 1;
+  return Array.from({length: numComments}).map((_, i) => ({
+      id: `comment-${postId}-${i}`,
+      author: { name: `User ${i+1}`, avatarUrl: `https://i.pravatar.cc/40?u=commenter${i}`},
+      timestamp: new Date(Date.now() - Math.random() * 5 * 24 * 60 * 60 * 1000),
+      content: `This is comment number ${i+1}. I ${Math.random() > 0.5 ? 'agree' : 'disagree'} with the points made.`,
+      replies: i % 2 === 0 ? Array.from({length: Math.floor(Math.random()*2)+1}).map((_, j) => ({
+           id: `reply-${postId}-${i}-${j}`,
+           author: { name: `Replier ${j+1}`, avatarUrl: `https://i.pravatar.cc/40?u=replier${j}`},
+           timestamp: new Date(Date.now() - Math.random() * 1 * 24 * 60 * 60 * 1000),
+           content: `Replying to comment ${i+1}. My thoughts are...`,
+           replies: [],
+           likes: Math.floor(Math.random() * 5),
+      })) : [],
+      likes: Math.floor(Math.random() * 20),
+  })).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 };
 
 const fetchRelatedPosts = async (category: string, currentPostId: string): Promise<RelatedPost[]> => {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    // Fetch posts, filter by category, exclude current post, limit to 3
-     const allPosts = Array.from({ length: 10 }).map((_, index) => ({ // Simulate some posts
-        id: `post-${index+50}`, // Different IDs from main posts
-        title: `Related Post ${index + 1} on ${category}`,
-        slug: `related-post-${index + 1}-${category.toLowerCase()}`,
-        excerpt: `An excerpt for a related post about ${category}.`,
-        imageUrl: `https://picsum.photos/seed/related${index + 1}/600/400`,
-        category: category,
-        author: { name: 'Related Author', avatarUrl: 'https://i.pravatar.cc/40?u=related' },
-        publishedAt: new Date(Date.now() - (index+50) * 24 * 60 * 60 * 1000),
-        commentCount: Math.floor(Math.random() * 10),
-      }));
+  // Replace with API call: /api/posts?category=...&limit=3&excludeId=...
+  await new Promise(resolve => setTimeout(resolve, 600));
+  const allPosts = Array.from({ length: 10 }).map((_, index) => ({
+      id: `post-${index+50}`,
+      title: `Related Post ${index + 1} on ${category}`,
+      slug: `related-post-${index + 1}-${category.toLowerCase()}`,
+      excerpt: `An excerpt for a related post about ${category}.`,
+      imageUrl: `https://picsum.photos/seed/related${index + 1}/600/400`,
+      category: category,
+      author: { id: `author-rel-${index}`, name: 'Related Author', avatarUrl: 'https://i.pravatar.cc/40?u=related', slug: `author-rel-${index}` },
+      publishedAt: new Date(Date.now() - (index+50) * 24 * 60 * 60 * 1000),
+      commentCount: Math.floor(Math.random() * 10),
+      // Make sure it matches RelatedPost type
+      content: '', // Add missing fields if needed
+      tags: [],
+      views: 0,
+    }));
 
-     return allPosts
-        .filter(p => p.category === category && p.id !== currentPostId)
-        .slice(0, 3);
+   return allPosts
+      .filter(p => p.category === category && p.id !== currentPostId)
+      .slice(0, 3) as RelatedPost[]; // Cast might be needed depending on full type defs
 }
 
 // --- Components ---
@@ -233,7 +148,8 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
 
     const newComment: Comment = {
       id: `new-${Date.now()}`,
-      author: { name: 'You', avatarUrl: 'https://i.pravatar.cc/40?u=currentuser' }, // Replace with actual user
+       postId: postId, // Added postId
+      author: { id:'currentuser', name: 'You', avatarUrl: 'https://i.pravatar.cc/40?u=currentuser', slug:'currentuser' }, // Replace with actual user
       timestamp: new Date(),
       content: content,
       replies: [],
@@ -275,7 +191,7 @@ const CommentForm: React.FC<{ postId: string, onCommentSubmit: (comment: Comment
 
 const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commentId: string) => void }> = ({ comment, postId, onReply }) => {
     const [showReplies, setShowReplies] = useState(false);
-    const [likes, setLikes] = useState(comment.likes);
+    const [likes, setLikes] = useState(comment.likes || 0);
 
     const handleLike = () => {
         // In real app, send like update to API
@@ -286,12 +202,12 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
     <div className="flex gap-4 py-4">
       <Avatar className="h-10 w-10 mt-1">
         <AvatarImage src={comment.author.avatarUrl} alt={comment.author.name} />
-        <AvatarFallback>{comment.author.name.charAt(0)}</AvatarFallback>
+        <AvatarFallback>{comment.author.name?.charAt(0) || '?'}</AvatarFallback>
       </Avatar>
       <div className="flex-1">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold text-sm">{comment.author.name}</span>
-          <time className="text-xs text-muted-foreground">{format(comment.timestamp, 'MMM d, yyyy HH:mm')}</time>
+          <span className="font-semibold text-sm">{comment.author.name || 'Anonymous'}</span>
+          <time className="text-xs text-muted-foreground">{format(new Date(comment.timestamp), 'MMM d, yyyy HH:mm')}</time>
         </div>
         <p className="text-sm mb-2">{comment.content}</p>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -323,49 +239,54 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
 
 export default function BlogPostPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [relatedPosts, setRelatedPosts] = useState<RelatedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [replyingTo, setReplyingTo] = useState<string | null>(null); // ID of comment being replied to
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const { toast } = useToast();
+  const { currentUser } = useAuth(); // Get current user from context
+
+   // Determine if the current user can edit/delete this post
+   const canEditOrDelete = currentUser && post && (currentUser.id === post.author.id || currentUser.role === 'admin');
+
 
   useEffect(() => {
     if (!slug) return;
 
     const loadData = async () => {
       setLoading(true);
-      setPost(null); // Reset post state before fetching
+      setPost(null);
       setComments([]);
       setRelatedPosts([]);
       try {
-        console.log(`Fetching post details for slug: ${slug}`);
         const postData = await fetchPostDetails(slug);
-        setPost(postData);
-
         if (postData) {
-          console.log(`Post found: ${postData.title}`);
-          const [commentsData, relatedPostsData] = await Promise.all([
-            fetchComments(postData.id),
-            fetchRelatedPosts(postData.category, postData.id)
-          ]);
-          setComments(commentsData);
-          setRelatedPosts(relatedPostsData);
+           setPost(postData);
+           // Only fetch comments and related posts if post exists
+           const [commentsData, relatedPostsData] = await Promise.all([
+             fetchComments(postData.id),
+             fetchRelatedPosts(postData.category, postData.id)
+           ]);
+           setComments(commentsData);
+           setRelatedPosts(relatedPostsData);
         } else {
-          // Handle post not found (redirect or show 404 component)
-          console.error("Post not found");
+           console.error(`Post not found for slug: ${slug}`);
            toast({
                title: "Post Not Found",
                description: "The requested blog post could not be found.",
                variant: "destructive",
            });
-           // Consider redirecting: router.push('/404');
+           // Optional: Redirect to 404 or blogs page
+           // router.push('/not-found');
         }
       } catch (error) {
         console.error("Failed to load post data:", error);
         toast({
-            title: "Error",
+            title: "Error Loading Post",
             description: "Could not load post details.",
             variant: "destructive",
         });
@@ -375,7 +296,7 @@ export default function BlogPostPage() {
     };
 
     loadData();
-  }, [slug, toast]); // Add toast to dependency array
+  }, [slug, toast, router]); // Add router to dependencies if using it for redirect
 
   const handleCommentSubmit = (newComment: Comment) => {
       // If it's a reply
@@ -405,35 +326,77 @@ export default function BlogPostPage() {
 
   const handleStartReply = (commentId: string) => {
         setReplyingTo(commentId);
-        // Optionally scroll to the comment form or highlight it
         const commentFormElement = document.getElementById('comment-section');
         commentFormElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
    const handleRatePost = async (rating: number) => {
         if (!post) return;
-        // Simulate API call
         console.log(`Rating post ${post.id} with ${rating} stars`);
         toast({
           title: "Rating Submitted",
           description: `You rated this post ${rating} stars.`,
         });
-        // Update UI optimistically if needed
          setPost(prevPost => {
             if (!prevPost) return null;
             const currentRating = prevPost.rating ?? 0;
-            // More realistic would involve storing count and total, but for mock:
-            const newAvgRating = (currentRating + rating) / 2;
+            const newAvgRating = (currentRating + rating) / 2; // Simple avg for mock
             return {...prevPost, rating: parseFloat(newAvgRating.toFixed(1))}
          });
     };
+
+    // --- Edit and Delete Handlers ---
+    const handleEdit = () => {
+         if (!canEditOrDelete) return;
+         // TODO: Implement navigation to an edit page or open an edit modal
+         console.log("Edit button clicked for post:", post?.slug);
+         toast({ title: "Edit Functionality", description: "Redirecting to edit page (not implemented yet)." });
+         // router.push(`/blogs/${post.slug}/edit`); // Example redirect
+     };
+
+     const handleDelete = async () => {
+         if (!canEditOrDelete || !post) return;
+         setIsDeleting(true);
+         console.log("Attempting to delete post:", post.slug);
+
+         try {
+             // --- Make API Call to DELETE endpoint ---
+             // Replace with actual fetch using user's token if needed for auth
+             const response = await fetch(`/api/posts/${post.slug}`, {
+                 method: 'DELETE',
+                 // Add headers if needed (e.g., Authorization: `Bearer ${token}`)
+             });
+
+             if (!response.ok) {
+                 const errorData = await response.json();
+                 throw new Error(errorData.error || `Failed to delete post: ${response.statusText}`);
+             }
+
+             toast({
+                 title: "Post Deleted",
+                 description: "The blog post has been successfully deleted.",
+             });
+             router.push('/blogs'); // Redirect to blogs list after deletion
+
+         } catch (error) {
+             console.error("Failed to delete post:", error);
+             toast({
+                 title: "Delete Failed",
+                 description: error instanceof Error ? error.message : "Could not delete the post.",
+                 variant: "destructive",
+             });
+         } finally {
+             setIsDeleting(false);
+         }
+     };
+     // --- End Edit and Delete Handlers ---
+
 
   if (loading) {
     return <PostSkeleton />;
   }
 
   if (!post) {
-    // Render a message or redirect if post is definitively not found after loading
      return <div className="container mx-auto py-8 text-center text-muted-foreground">Post not found or failed to load.</div>;
   }
 
@@ -444,38 +407,57 @@ export default function BlogPostPage() {
   return (
     <div className="container mx-auto py-8">
        <article className="max-w-4xl mx-auto">
-         <header className="mb-8">
+         <header className="mb-8 relative"> {/* Added relative positioning */}
            <Badge variant="secondary" className="mb-2">{post.category}</Badge>
            <h1 className="text-4xl font-bold tracking-tight mb-4">{post.title}</h1>
            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+             {/* Author Link */}
              <Link href={`/authors/${post.author.slug}`} className="flex items-center gap-2 hover:text-primary transition-colors">
                <Avatar className="h-8 w-8">
                  <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
-                 <AvatarFallback>{post.author.name.charAt(0)}</AvatarFallback>
+                 <AvatarFallback>{post.author.name?.charAt(0) || 'A'}</AvatarFallback>
                </Avatar>
-               <span>By {post.author.name}</span>
+               <span>By {post.author.name || 'Unknown Author'}</span>
              </Link>
-             <div className="flex items-center gap-1">
-               <Calendar className="h-4 w-4" />
-               <time dateTime={post.publishedAt.toISOString()}>{format(post.publishedAt, 'MMMM d, yyyy')}</time>
-             </div>
-              <div className="flex items-center gap-1">
-                 <MessageSquare className="h-4 w-4" />
-                 <span>{post.commentCount} Comments</span>
-               </div>
-              {post.rating != null && ( // Check for null or undefined
-                <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                    <span>{post.rating.toFixed(1)}</span> {/* Ensure fixed decimal */}
-                </div>
-                )}
-              {post.views != null && ( // Check for null or undefined
-                   <div className="flex items-center gap-1">
-                      <Eye className="h-4 w-4" />
-                      <span>{post.views} Views</span>
-                    </div>
-                )}
+             {/* Meta Info */}
+             <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={new Date(post.publishedAt).toISOString()}>{format(new Date(post.publishedAt), 'MMMM d, yyyy')}</time> </div>
+             <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{post.commentCount} Comments</span> </div>
+             {post.rating != null && <div className="flex items-center gap-1"> <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> <span>{post.rating.toFixed(1)}</span> </div> }
+             {post.views != null && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{post.views} Views</span> </div> }
            </div>
+
+            {/* Edit/Delete Buttons - Conditionally Rendered */}
+            {canEditOrDelete && (
+                 <div className="absolute top-0 right-0 flex gap-2">
+                     <Button variant="outline" size="sm" onClick={handleEdit}>
+                         <Edit className="mr-1 h-4 w-4" /> Edit
+                     </Button>
+                      <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                               <Button variant="destructive" size="sm" disabled={isDeleting}>
+                                   <Trash2 className="mr-1 h-4 w-4" /> Delete
+                               </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                              <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                   <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete the post
+                                      "{post.title}".
+                                   </AlertDialogDescription>
+                               </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                                       {isDeleting ? 'Deleting...' : 'Delete Post'}
+                                   </AlertDialogAction>
+                               </AlertDialogFooter>
+                           </AlertDialogContent>
+                       </AlertDialog>
+                 </div>
+             )}
+
+
          </header>
 
          <div className="relative w-full h-64 md:h-96 mb-8 rounded-lg overflow-hidden shadow-lg">
@@ -483,20 +465,17 @@ export default function BlogPostPage() {
                src={post.imageUrl}
                alt={post.title}
                fill
-               priority // Prioritize loading the main post image
-               sizes="(max-width: 768px) 100vw, 896px" // Adjust sizes based on max-w-4xl
+               priority
+               sizes="(max-width: 768px) 100vw, 896px"
                className="object-cover"
              />
          </div>
 
-         {/* Post Content */}
           <div
              className="prose prose-quoteless prose-neutral dark:prose-invert max-w-none"
              dangerouslySetInnerHTML={{ __html: post.content }}
            />
 
-
-           {/* Tags */}
             {post.tags && post.tags.length > 0 && (
               <div className="mt-8 flex flex-wrap gap-2">
                  <span className="font-semibold mr-2">Tags:</span>
@@ -508,7 +487,6 @@ export default function BlogPostPage() {
               </div>
              )}
 
-           {/* Rating */}
            <div className="mt-8 py-4 border-t border-b flex flex-col sm:flex-row items-center justify-center gap-4">
                 <span className="text-sm font-medium">Rate this post:</span>
                 <div className="flex gap-1">
@@ -520,39 +498,26 @@ export default function BlogPostPage() {
                  </div>
            </div>
 
-           {/* Author Box */}
-          <Card className="mt-12 mb-8 bg-secondary/50">
-            <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
+          {/* Author Box */}
+           <Card className="mt-12 mb-8 bg-secondary/50">
+             <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
                <Link href={`/authors/${post.author.slug}`}>
                  <Avatar className="h-20 w-20">
-                    <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
-                    <AvatarFallback>{post.author.name.substring(0, 2)}</AvatarFallback>
-                  </Avatar>
+                   <AvatarImage src={post.author.avatarUrl} alt={post.author.name} />
+                   <AvatarFallback>{post.author.name?.substring(0, 2) || 'AU'}</AvatarFallback>
+                 </Avatar>
                </Link>
-                <div className="text-center sm:text-left">
-                  <Link href={`/authors/${post.author.slug}`}>
-                     <h4 className="text-lg font-semibold hover:text-primary transition-colors">{post.author.name}</h4>
-                   </Link>
-                    <p className="text-sm text-muted-foreground mt-1 mb-2">{post.author.bio}</p>
-                     {post.author.socialLinks && (
-                       <div className="flex gap-2 justify-center sm:justify-start">
-                           {post.author.socialLinks.map(link => (
-                               <Button key={link.platform} variant="ghost" size="icon" className="h-7 w-7" asChild>
-                                   <Link href={link.url} target="_blank" rel="noopener noreferrer" aria-label={`${post.author.name}'s ${link.platform}`}>
-                                        {link.platform === 'twitter' && <Twitter className="h-4 w-4" />}
-                                        {link.platform === 'linkedin' && <Linkedin className="h-4 w-4" />}
-                                        {/* Add other icons */}
-                                   </Link>
-                                </Button>
-                            ))}
-                       </div>
-                   )}
+               <div className="text-center sm:text-left">
+                 <Link href={`/authors/${post.author.slug}`}>
+                   <h4 className="text-lg font-semibold hover:text-primary transition-colors">{post.author.name}</h4>
+                 </Link>
+                 <p className="text-sm text-muted-foreground mt-1 mb-2">{post.author.bio || 'Author bio not available.'}</p>
+                 {/* Assuming social links are part of Author type, conditionally render */}
+                 {/* {post.author.socialLinks && ( ... )} */}
                </div>
-            </CardContent>
-          </Card>
+             </CardContent>
+           </Card>
 
-
-           {/* Call to Action / Share */}
            <div className="mt-8 mb-12 p-6 rounded-lg bg-card border text-center">
                <h3 className="text-xl font-semibold mb-3">Enjoyed this post?</h3>
                <p className="text-muted-foreground mb-4">Share it with your friends or subscribe for more content!</p>
@@ -565,35 +530,27 @@ export default function BlogPostPage() {
                          </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="center">
-                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="cursor-pointer">
-                           <Facebook className="mr-2 h-4 w-4" /> Facebook
-                         </DropdownMenuItem>
-                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer">
-                           <Twitter className="mr-2 h-4 w-4" /> Twitter
-                         </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer">
-                           <Linkedin className="mr-2 h-4 w-4" /> LinkedIn
-                         </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="cursor-pointer"> <Facebook className="mr-2 h-4 w-4" /> Facebook </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Twitter className="mr-2 h-4 w-4" /> Twitter </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareTitle)}`, '_blank')} className="cursor-pointer"> <Linkedin className="mr-2 h-4 w-4" /> LinkedIn </DropdownMenuItem>
                        </DropdownMenuContent>
                     </DropdownMenu>
                </div>
            </div>
-
         </article>
 
-         {/* Related Posts Section */}
          {relatedPosts.length > 0 && (
             <section className="mt-16">
                <h2 className="text-2xl font-bold mb-6 text-center">Related Posts</h2>
                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                   {relatedPosts.map((relatedPost) => (
-                      <BlogPostCard key={relatedPost.id} post={relatedPost} />
+                      // Cast relatedPost to the type expected by BlogPostCard if necessary
+                      <BlogPostCard key={relatedPost.id} post={relatedPost as any} />
                     ))}
                 </div>
              </section>
          )}
 
-       {/* Comments Section */}
        <section id="comment-section" className="mt-16 max-w-3xl mx-auto">
          <h2 className="text-2xl font-bold mb-6">{post.commentCount} Comments</h2>
          <CommentForm postId={post.id} onCommentSubmit={handleCommentSubmit} replyTo={replyingTo || undefined}/>
@@ -603,7 +560,6 @@ export default function BlogPostPage() {
                      <Button variant="ghost" size="sm" className="h-auto p-1" onClick={() => setReplyingTo(null)}>Cancel Reply</Button>
                 </div>
            )}
-
          <Separator className="my-6" />
          <div className="space-y-4">
            {comments.length > 0 ? (

@@ -4,7 +4,8 @@ import './globals.css';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from "@/components/ui/toaster";
 import AppLayout from '@/components/layout/app-layout';
-import NewsletterSignupModal from '@/components/newsletter-signup-modal'; // Import the modal
+import NewsletterSignupModal from '@/components/newsletter-signup-modal';
+import { AuthProvider } from '@/lib/auth/authContext'; // Import AuthProvider
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -35,11 +36,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AppLayout>
-            {children}
-          </AppLayout>
-          <Toaster />
-          <NewsletterSignupModal /> {/* Add the modal here */}
+          <AuthProvider> {/* Wrap with AuthProvider */}
+             <AppLayout>
+               {children}
+             </AppLayout>
+             <Toaster />
+             <NewsletterSignupModal />
+           </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
