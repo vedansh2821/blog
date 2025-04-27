@@ -32,6 +32,11 @@ export async function GET(request: Request) {
                 ...post,
                 publishedAt: new Date(post.publishedAt).toISOString(),
                 updatedAt: post.updatedAt ? new Date(post.updatedAt).toISOString() : undefined,
+                 // Ensure author dates are handled
+                 author: {
+                    ...post.author,
+                    joinedAt: post.author.joinedAt instanceof Date ? post.author.joinedAt.toISOString() : post.author.joinedAt,
+                 }
             }))
         };
 
@@ -51,7 +56,7 @@ export async function POST(request: Request) {
         // --- Get Request Body ---
         // Expect the body to contain post data AND the ID of the user making the request
         const body = await request.json();
-        const { requestingUserId, title, content, category, excerpt, imageUrl, tags, heading, subheadings, paragraphs } = body;
+        const { requestingUserId, title, category, excerpt, imageUrl, tags, heading, subheadings, paragraphs } = body; // Removed 'content' from here
 
         // --- Basic Validation ---
         if (!requestingUserId) {
@@ -59,49 +64,47 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unauthorized: Missing user identification.' }, { status: 401 });
         }
         if (!title || !category) {
-            console.error(`[API POST /api/posts] Error: Missing required fields (title, content, category).`);
-            return NextResponse.json({ error: 'Missing required fields (title, content, category)' }, { status: 400 });
+            console.error(`[API POST /api/posts] Error: Missing required fields (title, category).`);
+             return NextResponse.json({ error: 'Missing required fields (title, category)' }, { status: 400 });
         }
+         // Validate structured content presence if needed - e.g., at least paragraphs or a heading
+         if (!heading && (!paragraphs || paragraphs.length === 0)) {
+             console.error(`[API POST /api/posts] Error: Missing required content structure (heading or paragraphs).`);
+             return NextResponse.json({ error: 'Post must contain at least a main heading or paragraphs.' }, { status: 400 });
+         }
 
-        // --- Construct Content from Structured Data ---
-        let constructedContent = `<h1 class="text-2xl font-bold mb-4">${heading}</h1>`;
-        if (subheadings && subheadings.length > 0) {
-            constructedContent += `<h2>Subheadings</h2><ul>`;
-            subheadings.forEach(subheading => {
-                constructedContent += `<li><h3>${subheading}</h3></li>`;
-            });
-            constructedContent += `</ul>`;
-        }
-        if (paragraphs && paragraphs.length > 0) {
-            constructedContent += `<p>${paragraphs.join("</p><p>")}</p>`;
-        }
 
         // Prepare data for mock DB function, using requestingUserId as the authorId
+        // Pass the structured data directly; createPost will handle content construction.
         const newPostData = {
             title,
-            content: constructedContent, // Use constructed content
             category,
             authorId: requestingUserId, // Use the authenticated user's ID
-            excerpt: excerpt || (paragraphs && paragraphs.length > 0 ? paragraphs[0].substring(0, 150) + '...' : content.substring(0, 150) + '...'), // Auto-generate excerpt from paragraphs or content
-            imageUrl: imageUrl || `https://picsum.photos/seed/${Date.now()}/1200/600`, // Default image
-            tags: tags || [],
-            heading,
-            subheadings,
-            paragraphs
+            excerpt, // Pass excerpt if provided
+            imageUrl, // Pass imageUrl if provided
+            tags, // Pass tags if provided
+            heading, // Pass raw heading
+            subheadings, // Pass raw subheadings array
+            paragraphs, // Pass raw paragraphs array
+             // content: constructedContent, // Let createPost handle this based on structure
         };
 
         // --- Create post using mock DB function ---
-        // Pass true to generateSlug to add a unique suffix (e.g., timestamp or counter)
-        // to avoid slug collisions for posts created via the API
-        const createdPost = await createPost(newPostData, true);
+         // Set addUniqueSuffix to false for now to match seeded data slugs if title is the same
+        const createdPost = await createPost(newPostData, false);
 
-        console.log(`[API POST /api/posts] New post created: ${createdPost.id} by user ${requestingUserId}`);
+        console.log(`[API POST /api/posts] New post created: ${createdPost.id} (Slug: ${createdPost.slug}) by user ${requestingUserId}`);
 
         // Ensure dates are ISO strings for JSON compatibility
         const responseData = {
             ...createdPost,
             publishedAt: new Date(createdPost.publishedAt).toISOString(),
             updatedAt: createdPost.updatedAt ? new Date(createdPost.updatedAt).toISOString() : undefined,
+             // Ensure author dates are handled
+             author: {
+                ...createdPost.author,
+                joinedAt: createdPost.author.joinedAt instanceof Date ? createdPost.author.joinedAt.toISOString() : createdPost.author.joinedAt,
+             }
         };
 
         return NextResponse.json(responseData, { status: 201 });

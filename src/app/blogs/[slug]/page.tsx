@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -65,10 +66,10 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(), // Provide default if missing
            updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined,
            // Ensure nested author has date object if present
-           author: {
+           author: data.author ? {
                ...data.author,
                joinedAt: data.author?.joinedAt ? new Date(data.author.joinedAt) : new Date(), // Provide default
-           },
+           } : createAuthorObject(null), // Add default author if missing
            // Ensure other optional fields have defaults if needed by UI
            commentCount: data.commentCount ?? 0,
            views: data.views ?? 0,
@@ -78,6 +79,9 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            heading: data.heading || data.title || 'Untitled Post', // Use title as fallback for heading
            subheadings: data.subheadings || [],
            paragraphs: data.paragraphs || [],
+           content: data.content || '', // Ensure content is present
+           excerpt: data.excerpt || '', // Ensure excerpt is present
+           imageUrl: data.imageUrl || `https://picsum.photos/seed/${data.id || 'default'}/1200/600`, // Default image
        };
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, post);
       return post;
@@ -85,6 +89,18 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
       console.error(`[fetchPostDetails] Catch block error fetching post ${slug}:`, error);
       return null; // Return null on error
   }
+};
+
+// --- Helper to create a default Author object ---
+const createAuthorObject = (user: any): Author => {
+    return {
+        id: user?.id || 'unknown',
+        name: user?.name || 'Unknown Author',
+        slug: user?.id || 'unknown',
+        avatarUrl: user?.photoURL || `https://i.pravatar.cc/40?u=unknown`,
+        bio: user?.bio || 'Author information not available.',
+        joinedAt: user?.joinedAt ? new Date(user.joinedAt) : new Date(0), // Default date
+    };
 };
 
 
@@ -684,7 +700,7 @@ export default function BlogPostPage() {
            <h1 className="text-4xl font-bold tracking-tight mb-4">{post.title}</h1>
            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
              {/* Author Link */}
-             {post.author && (
+             {post.author && post.author.id !== 'unknown' && ( // Check if author is known
                <Link href={authorSlug !== '#' ? `/authors/${authorSlug}` : '#'} className="flex items-center gap-2 hover:text-primary transition-colors">
                  <Avatar className="h-8 w-8">
                    <AvatarImage src={authorAvatar} alt={authorName} />
@@ -693,6 +709,15 @@ export default function BlogPostPage() {
                  <span>By {authorName}</span>
                </Link>
              )}
+              {post.author?.id === 'unknown' && ( // Display placeholder if author unknown
+                  <div className="flex items-center gap-2">
+                     <Avatar className="h-8 w-8">
+                       <AvatarImage src={authorAvatar} alt={authorName} />
+                       <AvatarFallback>U</AvatarFallback>
+                     </Avatar>
+                     <span>By {authorName}</span>
+                  </div>
+              )}
              {/* Meta Info */}
              <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={isValidDate ? publishedDate.toISOString() : undefined}>{isValidDate ? format(publishedDate, 'MMMM d, yyyy') : 'Invalid Date'}</time> </div>
              <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{commentCount} Comments</span> </div>
@@ -786,7 +811,7 @@ export default function BlogPostPage() {
            </div>
 
           {/* Author Box */}
-           {post.author && (
+           {post.author && post.author.id !== 'unknown' && ( // Only show if author is known
                <Card className="mt-12 mb-8 bg-secondary/50">
                  <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
                    <Link href={authorSlug !== '#' ? `/authors/${authorSlug}` : '#'}>
