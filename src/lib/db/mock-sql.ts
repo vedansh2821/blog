@@ -167,6 +167,7 @@ const generateSlug = (title: string): string => {
     let counter = 1;
 
     // Check if the base slug already exists (case-insensitive)
+    // Ensure we check against the *current* list of posts
     while (posts.some(p => p.slug.toLowerCase() === finalSlug.toLowerCase())) {
         finalSlug = `${baseSlug}-${counter}`;
         counter++;
@@ -178,14 +179,13 @@ const generateSlug = (title: string): string => {
         }
     }
 
-    console.log(`[Mock DB] Generated slug: ${finalSlug} for title: "${title}"`);
+    console.log(`[Mock DB] Generated unique slug: "${finalSlug}" for title: "${title}"`);
     return finalSlug;
 };
 
 
 export const createPost = async (
     postData: Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'> & { authorId: string, content?: string, excerpt?: string, imageUrl?: string, tags?: string[], heading?: string, subheadings?: string[], paragraphs?: string[] },
-    // Note: addUniqueSuffix parameter removed as generateSlug now always ensures uniqueness
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
     if (!author) {
@@ -193,32 +193,34 @@ export const createPost = async (
     }
 
     // Construct content if structured fields are provided
-     let constructedContent = postData.content || ''; // Use provided content as default
-     if (!constructedContent && (postData.heading || (postData.subheadings && postData.subheadings.length > 0) || (postData.paragraphs && postData.paragraphs.length > 0))) {
-         constructedContent = ''; // Start fresh if structure exists but content doesn't
-         if (postData.heading) {
-             constructedContent += `<h1 class="text-2xl font-bold mb-4">${postData.heading}</h1>`;
-         }
-         if (postData.subheadings && postData.subheadings.length > 0) {
-            constructedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`; // Added title for subheadings section
-            postData.subheadings.forEach(subheading => {
-               if (typeof subheading === 'string' && subheading.trim()) {
-                   constructedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`; // Added styling
-               }
-            });
-            constructedContent += `</ul>`;
+    let constructedContent = postData.content || ''; // Use provided content as default
+    if (!constructedContent && (postData.heading || (postData.subheadings && postData.subheadings.length > 0) || (postData.paragraphs && postData.paragraphs.length > 0))) {
+        console.log('[Mock DB createPost] Constructing content from structured fields...');
+        constructedContent = ''; // Start fresh if structure exists but content doesn't
+        if (postData.heading) {
+            constructedContent += `<h1 class="text-2xl font-bold mb-4">${postData.heading}</h1>`;
         }
-        if (postData.paragraphs && postData.paragraphs.length > 0) {
-            const validParagraphs = postData.paragraphs.filter(p => typeof p === 'string' && p.trim());
-            if (validParagraphs.length > 0) {
-                constructedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`; // Wrap paragraphs
-            }
-        }
-     }
+        if (postData.subheadings && postData.subheadings.length > 0) {
+           constructedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`; // Added title for subheadings section
+           postData.subheadings.forEach(subheading => {
+              if (typeof subheading === 'string' && subheading.trim()) {
+                  constructedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`; // Added styling
+              }
+           });
+           constructedContent += `</ul>`;
+       }
+       if (postData.paragraphs && postData.paragraphs.length > 0) {
+           const validParagraphs = postData.paragraphs.filter(p => typeof p === 'string' && p.trim());
+           if (validParagraphs.length > 0) {
+               constructedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`; // Wrap paragraphs
+           }
+       }
+       console.log('[Mock DB createPost] Constructed content length:', constructedContent.length);
+    }
 
      // Ensure content is not empty
      if (!constructedContent.trim()) {
-         console.warn("[Mock DB] Post content is empty after construction. Using placeholder.");
+         console.warn("[Mock DB createPost] Post content is empty after construction. Using placeholder.");
          constructedContent = "<p>Placeholder content.</p>";
      }
 
@@ -247,34 +249,42 @@ export const createPost = async (
         subheadings: postData.subheadings || [], // Store raw subheadings
         paragraphs: postData.paragraphs || [], // Store raw paragraphs
     };
-    console.log(`[Mock DB createPost] Creating post: "${newPost.title}" (Slug: "${newPost.slug}") by ${newPost.author.name}`);
+    console.log(`[Mock DB createPost] Finalizing post creation: Title="${newPost.title}", Slug="${newPost.slug}", ID="${newPost.id}", AuthorID="${newPost.author.id}"`);
     posts.push(newPost); // Add to the in-memory array
-    return { ...newPost, publishedAt: new Date(newPost.publishedAt), updatedAt: new Date(newPost.updatedAt) };
+    console.log(`[Mock DB createPost] Current post count: ${posts.length}`);
+    // Find the newly added post to ensure it exists before returning
+    const addedPost = posts.find(p => p.id === newPost.id);
+    if (!addedPost) {
+        console.error(`[Mock DB createPost] CRITICAL: Failed to add post ID ${newPost.id} to the array!`);
+        throw new Error("Failed to save post in mock database.");
+    }
+    return { ...addedPost, publishedAt: new Date(addedPost.publishedAt), updatedAt: new Date(addedPost.updatedAt) };
 };
 
 export const findPostBySlug = async (slug: string): Promise<Post | null> => {
     const lowerCaseSlug = slug?.toLowerCase(); // Handle potential null/undefined slug
     if (!lowerCaseSlug) {
-        console.warn(`[Mock DB] findPostBySlug called with invalid slug: ${slug}`);
+        console.warn(`[Mock DB findPostBySlug] Called with invalid slug: ${slug}`);
         return null;
     }
-    console.log(`[Mock DB] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
-    console.log(`[Mock DB] Available post slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`); // Log available slugs
+    console.log(`[Mock DB findPostBySlug] Searching for post with slug (case-insensitive): "${lowerCaseSlug}"`);
+    // Log current slugs for debugging
+    console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
 
     // Find post with case-insensitive slug comparison
     const post = posts.find(p => p.slug.toLowerCase() === lowerCaseSlug);
 
     if (!post) {
-        console.warn(`[Mock DB] Post with slug "${lowerCaseSlug}" not found.`);
+        console.warn(`[Mock DB findPostBySlug] Post with slug "${lowerCaseSlug}" not found.`);
         return null;
     }
 
-    console.log(`[Mock DB] Found post: ID ${post.id}, Title: "${post.title}" for slug: "${slug}"`);
+    console.log(`[Mock DB findPostBySlug] Found post: ID ${post.id}, Title: "${post.title}" for slug: "${slug}"`);
 
     // Simulate fetching author details again (important for up-to-date info)
     const author = await findUserById(post.author.id);
     if (!author) {
-        console.warn(`[Mock DB] Author with ID ${post.author.id} not found for post ${post.id}`);
+        console.warn(`[Mock DB findPostBySlug] Author with ID ${post.author.id} not found for post ${post.id}`);
         // Decide how to handle - return post with unknown author or null?
         // Returning with unknown author for now.
          return {
@@ -301,16 +311,19 @@ export const findPosts = async (options: {
     query?: string;
 }): Promise<{ posts: Post[], hasMore: boolean, totalPages: number, currentPage: number, totalResults: number }> => {
     const { page = 0, limit = 9, category, authorId, query } = options;
-    console.log(`[Mock DB findPosts] Finding posts:`, options);
+    console.log(`[Mock DB findPosts] Finding posts with options:`, options);
+    console.log(`[Mock DB findPosts] Total posts before filtering: ${posts.length}`);
 
 
     let filtered = [...posts]; // Start with a copy
 
     if (category && category !== 'all') {
         filtered = filtered.filter(p => p.category.toLowerCase() === category.toLowerCase());
+        console.log(`[Mock DB findPosts] After category filter (${category}): ${filtered.length} posts`);
     }
     if (authorId) {
         filtered = filtered.filter(p => p.author.id === authorId);
+        console.log(`[Mock DB findPosts] After author filter (${authorId}): ${filtered.length} posts`);
     }
     if (query) {
         const lowerQuery = query.toLowerCase();
@@ -321,6 +334,7 @@ export const findPosts = async (options: {
             p.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
              p.author.name?.toLowerCase().includes(lowerQuery) // Check optional author name
         );
+        console.log(`[Mock DB findPosts] After query filter ("${query}"): ${filtered.length} posts`);
     }
 
     // Sort AFTER filtering
@@ -342,7 +356,7 @@ export const findPosts = async (options: {
         return { ...post, publishedAt: pubDate, updatedAt: updDate, author: createAuthorObject(author) };
     }));
 
-
+    console.log(`[Mock DB findPosts] Returning ${postsWithDetails.length} posts for page ${page}. Total results: ${totalResults}`);
     return {
         posts: postsWithDetails,
         hasMore,
@@ -360,29 +374,31 @@ export const updatePost = async (
 ): Promise<Post | null> => {
     const lowerCaseSlug = slug?.toLowerCase();
      if (!lowerCaseSlug) {
-        console.warn(`[Mock DB] updatePost called with invalid slug: ${slug}`);
+        console.warn(`[Mock DB updatePost] Called with invalid slug: ${slug}`);
         return null;
     }
-    console.log(`[Mock DB] Attempting to update post with slug: ${lowerCaseSlug}`);
+    console.log(`[Mock DB updatePost] Attempting to update post with slug: ${lowerCaseSlug}`);
+    console.log(`[Mock DB updatePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
+
 
     const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
-        console.log(`[Mock DB] Post not found for update: ${slug}`);
+        console.error(`[Mock DB updatePost] Post not found for update: ${slug}`);
         return null;
     }
 
      // Authorization Check
      const requestingUser = await findUserById(updateData.requestingUserId);
      if (!requestingUser) {
-         console.error(`[Mock DB] Authorization failed: Requesting user ${updateData.requestingUserId} not found.`);
+         console.error(`[Mock DB updatePost] Authorization failed: Requesting user ${updateData.requestingUserId} not found.`);
          throw new Error("Unauthorized");
      }
      const postOwnerId = posts[postIndex].author.id;
      if (postOwnerId !== requestingUser.id && requestingUser.role !== 'admin') {
-          console.error(`[Mock DB] Authorization failed: User ${requestingUser.id} (Role: ${requestingUser.role}) cannot update post owned by ${postOwnerId}`);
+          console.error(`[Mock DB updatePost] Authorization failed: User ${requestingUser.id} (Role: ${requestingUser.role}) cannot update post owned by ${postOwnerId}`);
           throw new Error("Unauthorized");
      }
-    console.log(`[Mock DB] User ${requestingUser.id} authorized to update post ${slug}.`);
+    console.log(`[Mock DB updatePost] User ${requestingUser.id} authorized to update post ${slug}.`);
 
     const originalPost = posts[postIndex];
 
@@ -390,16 +406,16 @@ export const updatePost = async (
     let newSlug = originalPost.slug;
     if (updateData.title && updateData.title !== originalPost.title) {
          newSlug = generateSlug(updateData.title); // Will ensure uniqueness
-         console.log(`[Mock DB] Title changed, generated new unique slug: ${newSlug}`);
+         console.log(`[Mock DB updatePost] Title changed, generated new unique slug: ${newSlug}`);
     }
 
 
     // Construct updated content if structured fields are changing
     let updatedContent = updateData.content ?? originalPost.content; // Use new content if provided
-     const hasStructureUpdate = updateData.heading !== undefined || updateData.subheadings !== undefined || updateData.paragraphs !== undefined;
+    const hasStructureUpdate = updateData.heading !== undefined || updateData.subheadings !== undefined || updateData.paragraphs !== undefined;
 
      if (hasStructureUpdate) {
-         console.log(`[Mock DB] Structured content update detected for post ${slug}.`);
+         console.log(`[Mock DB updatePost] Structured content update detected for post ${slug}.`);
         const currentHeading = updateData.heading ?? originalPost.heading;
         const currentSubheadings = updateData.subheadings ?? originalPost.subheadings;
         const currentParagraphs = updateData.paragraphs ?? originalPost.paragraphs;
@@ -415,7 +431,7 @@ export const updatePost = async (
                     updatedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`;
                 }
              });
-             constructedContent += `</ul>`;
+             updatedContent += `</ul>`; // Corrected from constructedContent
          }
          if (currentParagraphs && currentParagraphs.length > 0) {
              const validParagraphs = currentParagraphs.filter(p => typeof p === 'string' && p.trim());
@@ -426,7 +442,7 @@ export const updatePost = async (
          // If only structured data was updated, but no actual content generated, keep original content?
          // Or should it default to empty? Let's keep original if new construction is empty.
          if (!updatedContent.trim() && originalPost.content) {
-             console.log(`[Mock DB] Reconstructed content is empty, reverting to original content for post ${slug}.`);
+             console.log(`[Mock DB updatePost] Reconstructed content is empty, reverting to original content for post ${slug}.`);
              updatedContent = originalPost.content;
          }
      }
@@ -452,7 +468,7 @@ export const updatePost = async (
 
 
     posts[postIndex] = updatedPost;
-    console.log(`[Mock DB] Post updated: ${updatedPost.title} (Slug: ${updatedPost.slug})`);
+    console.log(`[Mock DB updatePost] Post updated: ${updatedPost.title} (Slug: ${updatedPost.slug})`);
 
     const author = await findUserById(updatedPost.author.id);
     return {
@@ -466,14 +482,16 @@ export const updatePost = async (
 export const deletePost = async (slug: string, requestingUserId: string): Promise<boolean> => {
     const lowerCaseSlug = slug?.toLowerCase();
     if (!lowerCaseSlug) {
-        console.warn(`[Mock DB] deletePost called with invalid slug: ${slug}`);
+        console.warn(`[Mock DB deletePost] Called with invalid slug: ${slug}`);
         return false;
     }
-    console.log(`[Mock DB] Deleting post with slug: ${lowerCaseSlug} by user: ${requestingUserId}`);
+    console.log(`[Mock DB deletePost] Attempting to delete post with slug: ${lowerCaseSlug} by user: ${requestingUserId}`);
+    console.log(`[Mock DB deletePost] Available slugs: ${posts.map(p => p.slug.toLowerCase()).join(', ')}`);
+
 
     const postIndex = posts.findIndex(p => p.slug.toLowerCase() === lowerCaseSlug);
     if (postIndex === -1) {
-        console.log(`[Mock DB] Post not found for delete: ${slug}`);
+        console.error(`[Mock DB deletePost] Post not found for delete: ${slug}`);
         return false; // Indicate post not found
     }
 
@@ -482,17 +500,18 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
     const postAuthorId = posts[postIndex].author.id;
 
     if (!user) {
-         console.error(`[Mock DB] Authorization failed: Requesting user ${requestingUserId} not found.`);
+         console.error(`[Mock DB deletePost] Authorization failed: Requesting user ${requestingUserId} not found.`);
          throw new Error("Unauthorized");
      }
 
     if (postAuthorId !== requestingUserId && user.role !== 'admin') {
-        console.error(`[Mock DB] Authorization failed: User ${requestingUserId} (Role: ${user.role}) cannot delete post owned by ${postAuthorId}`);
+        console.error(`[Mock DB deletePost] Authorization failed: User ${requestingUserId} (Role: ${user.role}) cannot delete post owned by ${postAuthorId}`);
         throw new Error("Unauthorized");
     }
 
+    const deletedTitle = posts[postIndex].title; // Store title before deleting
     posts.splice(postIndex, 1);
-    console.log(`[Mock DB] Post deleted: ${slug}`);
+    console.log(`[Mock DB deletePost] Post deleted: "${deletedTitle}" (Slug: ${slug}). Remaining posts: ${posts.length}`);
     return true;
 };
 
@@ -514,7 +533,8 @@ const seedData = async () => {
 
      try {
        // Create admin user
-       const adminPasswordHash = await bcrypt.hash('adminpassword', 10);
+       const adminPassword = 'adminpassword';
+       const adminPasswordHash = await bcrypt.hash(adminPassword, 10);
        const adminUser = await createUser({
            email: 'vedansh2821@gmail.com',
            name: 'Vedansh V.',
@@ -524,10 +544,11 @@ const seedData = async () => {
            dob: '1990-01-01',
            phone: '123-456-7890',
        });
-       console.log(`[Mock DB] Admin user created: ${adminUser.email}, ID: ${adminUser.id}`);
+       console.log(`[Mock DB] Admin user created: ${adminUser.email}, ID: ${adminUser.id}, Password: ${adminPassword}`);
 
        // Create regular users
-       const aayushiPasswordHash = await bcrypt.hash('password123', 10);
+       const aayushiPassword = 'password123';
+       const aayushiPasswordHash = await bcrypt.hash(aayushiPassword, 10);
        const user1 = await createUser({
            email: 'aayushi@example.com',
            name: 'Aayushi P.',
@@ -537,9 +558,10 @@ const seedData = async () => {
            dob: '1995-05-15',
            phone: null,
        });
-        console.log(`[Mock DB] User created: ${user1.email}, ID: ${user1.id}`);
+        console.log(`[Mock DB] User created: ${user1.email}, ID: ${user1.id}, Password: ${aayushiPassword}`);
 
-       const alexPasswordHash = await bcrypt.hash('password456', 10);
+       const alexPassword = 'password456';
+       const alexPasswordHash = await bcrypt.hash(alexPassword, 10);
        const user2 = await createUser({
            email: 'alex@example.com',
            name: 'Alex G.',
@@ -549,7 +571,7 @@ const seedData = async () => {
            dob: null,
            phone: '987-654-3210',
        });
-        console.log(`[Mock DB] User created: ${user2.email}, ID: ${user2.id}`);
+        console.log(`[Mock DB] User created: ${user2.email}, ID: ${user2.id}, Password: ${alexPassword}`);
 
 
         // Create posts
@@ -669,4 +691,3 @@ const seedData = async () => {
  if (!isSeeded) {
      seedData();
  }
-

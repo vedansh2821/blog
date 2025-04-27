@@ -779,7 +779,7 @@ export default function BlogPostPage() {
                      ? `
                          ${post.heading ? `<h1 class="text-2xl font-bold mb-4">${post.heading}</h1>` : ''}
                          ${post.subheadings && post.subheadings.length > 0 ? `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>${post.subheadings.map(sub => `<li class="mb-2"><h3 class="text-lg font-medium">${sub.trim()}</h3></li>`).join('')}</ul>` : ''}
-                         ${post.paragraphs && post.paragraphs.length > 0 ? `<div class="prose-p:my-4">${post.paragraphs.filter(p=>p.trim()).map(p => `<p>${p.trim()}</p>`).join('')}</div>` : ''}
+                         ${post.paragraphs && post.paragraphs.length > 0 ? `<div class="prose-p:my-4">${post.paragraphs.filter(p=>p && p.trim()).map(p => `<p>${p.trim()}</p>`).join('')}</div>` : ''}
                      `
                      : (typeof post.content === 'string' ? post.content : '') // Fallback to raw content
                  }
