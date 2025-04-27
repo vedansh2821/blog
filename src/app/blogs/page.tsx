@@ -1,6 +1,8 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link'; // Import Link component
 import BlogPostCard from '@/components/blog-post-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -386,4 +388,3 @@ export default function BlogsPage() {
     </div>
   );
 }
-
