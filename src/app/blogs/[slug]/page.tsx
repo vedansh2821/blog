@@ -53,7 +53,18 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
           const errorText = await response.text().catch(() => 'Could not read error response body');
           console.error(`[fetchPostDetails] API Error ${response.status} for slug "${slug}": ${errorText}`);
           if (response.status === 404) {
-              console.log(`[fetchPostDetails] Post explicitly not found (404) for slug: ${slug}`);
+              console.log(`[fetchPostDetails] Post explicitly not found (404) for slug: ${slug}. Check if slug generation/matching is correct.`);
+              // Log available slugs from mock DB for debugging
+              try {
+                  // This is a temporary solution for debugging the mock DB state.
+                  // In a real DB, you wouldn't do this.
+                  const allPostsResponse = await fetch('/api/posts?limit=1000'); // Fetch all posts (or a large number)
+                  const allPostsData = await allPostsResponse.json();
+                  const availableSlugs = allPostsData.posts.map((p: any) => p.slug).join(', ');
+                  console.log(`[fetchPostDetails] Available slugs in mock DB state: ${availableSlugs}`);
+              } catch (logError) {
+                  console.error("[fetchPostDetails] Could not fetch all slugs for debugging.", logError);
+              }
               return null; // Return null for 404 as intended
           }
           // For other errors, throw to be caught below
@@ -82,6 +93,7 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            content: data.content || '', // Ensure content is present
            excerpt: data.excerpt || '', // Ensure excerpt is present
            imageUrl: data.imageUrl || `https://picsum.photos/seed/${data.id || 'default'}/1200/600`, // Default image
+           tags: data.tags || [], // Ensure tags is an array
        };
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, post);
       return post;
@@ -193,6 +205,7 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
              heading: post.heading,
              subheadings: post.subheadings || [],
              paragraphs: post.paragraphs || [],
+             tags: post.tags || [], // Ensure tags is an array
         }));
 
 
