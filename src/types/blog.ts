@@ -26,24 +26,23 @@ export interface Post {
     id: string;
     title: string;
     slug: string;
-    content: string; // Assuming HTML content
+    content: string; // HTML content, potentially constructed
     imageUrl: string;
     category: string;
-    author: Author; // Embed full author details, now including optional role
+    author: Author; // Embed full author details
     publishedAt: Date | string; // Can be Date object or ISO string
     updatedAt?: Date | string; // Optional last updated date
     commentCount: number;
-    tags?: string[];
+    tags: string[]; // Ensure tags is always an array
     rating?: number; // Optional average rating
     views?: number; // Optional view count
     excerpt: string; // Ensure excerpt is always present
-    heading?: string;
-    subheadings?: string[];
-    paragraphs?: string[];
+    heading: string; // Always present (can fallback to title)
+    subheadings: string[]; // Always present (can be empty array)
+    paragraphs: string[]; // Always present (can be empty array)
 }
 
-// Often similar to Post, but might omit 'content' for brevity
-export interface RelatedPost extends Omit<Post, 'content' | 'tags' | 'rating' | 'views' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs'> {
-    author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info needed for cards
+// RelatedPost type omits full content and some details for brevity in listings
+export interface RelatedPost extends Omit<Post, 'content' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs'> {
+    author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info
 }
-
