@@ -17,42 +17,39 @@ import { useAuth } from '@/lib/auth/authContext';
 import type { Post } from '@/types/blog';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Add 'Love' and 'Others' to the categories
+// Ensure categories match those used elsewhere
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
+// Schema for the edit form
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
     heading: z.string().min(5, { message: 'Heading must be at least 5 characters.' }),
-    // Ensure these can be strings (from input) or arrays (processed)
-    subheadings: z.union([z.string(), z.array(z.string())]).optional(),
-    paragraphs: z.union([z.string(), z.array(z.string())]).optional(),
-    excerpt: z.string().min(10).max(200).optional().or(z.literal('')), // Optional or empty string
-    imageUrl: z.string().optional().or(z.literal('')),
+    // Store raw input as strings, process before sending
+    subheadings: z.string().optional(), // Comma-separated string
+    paragraphs: z.string().optional(),   // Newline-separated string
+    excerpt: z.string().min(10).max(200, { message: 'Excerpt must be between 10 and 200 characters.' }).optional().or(z.literal('')),
+    imageUrl: z.string().url({ message: 'Please enter a valid image URL.' }).optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
 });
 
 type PostFormInputs = z.infer<typeof postFormSchema>;
 
-// Helper to fetch post details
+// Helper to fetch post details specifically for editing
 const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
     try {
         console.log(`[Edit Page] Fetching post details for slug: ${slug}`);
         const response = await fetch(`/api/posts/${slug}`);
         if (!response.ok) {
-            if (response.status === 404) {
-                 console.log(`[Edit Page] Post not found (404) for slug: ${slug}`);
-                 return null;
-             }
-            const errorText = await response.text();
-            console.error(`[Edit Page] Failed to fetch post data: ${response.status} - ${errorText}`);
-            throw new Error('Failed to fetch post data');
+            const errorText = await response.text().catch(() => `Status: ${response.status}`);
+            console.error(`[Edit Page] Failed to fetch post data for ${slug}: ${errorText}`);
+            return null;
         }
         const data = await response.json();
-         console.log(`[Edit Page] Post data fetched successfully for ${slug}`);
-         // Convert date strings to Date objects before returning
+        console.log(`[Edit Page] Post data fetched successfully for ${slug}`);
+        // Convert date strings to Date objects before returning
         return {
             ...data,
             publishedAt: data.publishedAt ? new Date(data.publishedAt) : new Date(),
@@ -60,7 +57,7 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
             author: data.author ? {
                  ...data.author,
                  joinedAt: data.author.joinedAt ? new Date(data.author.joinedAt) : undefined,
-             } : undefined, // Make sure author is correctly typed or handled if missing
+             } : undefined,
         };
     } catch (error) {
         console.error(`[Edit Page] Error fetching post details for ${slug}:`, error);
@@ -68,7 +65,7 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
     }
 };
 
-
+// Edit Post Page Component
 export default function EditPostPage() {
     const { toast } = useToast();
     const router = useRouter();
@@ -78,35 +75,38 @@ export default function EditPostPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [postData, setPostData] = useState<Post | null>(null);
     const [isLoadingData, setIsLoadingData] = useState(true);
-    const [isAuthorized, setIsAuthorized] = useState(false); // Track authorization
-    const [selectedImage, setSelectedImage] = useState<File | null>(null); // Store selected image
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [selectedImage, setSelectedImage] = useState<File | null>(null);
 
-
+    // React Hook Form setup
     const { register, handleSubmit, formState: { errors }, control, reset, setValue } = useForm<PostFormInputs>({
         resolver: zodResolver(postFormSchema),
-         defaultValues: { // Add default values
+        defaultValues: { // Initialize with empty strings or undefined
             title: '',
             category: undefined,
             heading: '',
-            subheadings: '', // Initialize as string for input
-            paragraphs: '',   // Initialize as string for textarea
+            subheadings: '',
+            paragraphs: '',
             excerpt: '',
             imageUrl: '',
             tags: '',
         },
     });
 
-    // Fetch post data and check authorization
+    // Effect to load post data and check authorization
     useEffect(() => {
         if (!slug || authLoading) return; // Wait for slug and auth state
 
         const loadAndAuthorize = async () => {
             setIsLoadingData(true);
+            setIsAuthorized(false); // Reset authorization state
+
             const fetchedPost = await fetchPostDetailsForEdit(slug);
 
             if (!fetchedPost) {
                 toast({ title: "Error", description: "Post not found.", variant: "destructive" });
                 router.push('/blogs'); // Redirect if post not found
+                setIsLoadingData(false);
                 return;
             }
 
@@ -116,6 +116,7 @@ export default function EditPostPage() {
             if (!currentUser) {
                 toast({ title: "Unauthorized", description: "You must be logged in to edit posts.", variant: "destructive" });
                 router.push('/login');
+                setIsLoadingData(false);
                 return;
             }
 
@@ -125,21 +126,21 @@ export default function EditPostPage() {
             if (!canEdit) {
                 toast({ title: "Forbidden", description: "You do not have permission to edit this post.", variant: "destructive" });
                 router.push(`/blogs/${slug}`); // Redirect back to post view
+                setIsLoadingData(false);
                 return;
             }
 
-
             // Pre-fill the form if authorized and post data is loaded
             reset({
-                title: fetchedPost.title,
+                title: fetchedPost.title || '',
                 category: fetchedPost.category as PostFormInputs['category'], // Cast category
-                heading: fetchedPost.heading || '', // Provide default empty string
-                // Convert arrays to strings for the input fields
+                heading: fetchedPost.heading || '',
+                // Convert arrays back to strings for form inputs
                 subheadings: fetchedPost.subheadings?.join(', ') || '',
                 paragraphs: fetchedPost.paragraphs?.join('\n') || '',
                 excerpt: fetchedPost.excerpt || '',
                 imageUrl: fetchedPost.imageUrl || '',
-                tags: fetchedPost.tags?.join(', ') || '', // Join tags array into string
+                tags: fetchedPost.tags?.join(', ') || '',
             });
 
             setIsLoadingData(false);
@@ -149,8 +150,7 @@ export default function EditPostPage() {
 
     }, [slug, currentUser, authLoading, router, toast, reset]);
 
-
-
+    // Function to handle form submission for updates
     const onSubmit: SubmitHandler<PostFormInputs> = async (data) => {
         if (!currentUser || !postData || !isAuthorized) {
             toast({ title: "Error", description: "Cannot update post. Authorization or data missing.", variant: "destructive" });
@@ -158,33 +158,33 @@ export default function EditPostPage() {
         }
         setIsSubmitting(true);
         try {
+            // Process tags, subheadings, and paragraphs from string input to arrays
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+            const subheadingsArray = data.subheadings ? data.subheadings.split(',').map(s => s.trim()).filter(s => s) : [];
+            const paragraphsArray = data.paragraphs ? data.paragraphs.split('\n').map(p => p.trim()).filter(p => p) : [];
 
-            // Process subheadings and paragraphs based on their current type (string from input or array from state)
-            const subheadingsArray = typeof data.subheadings === 'string'
-                ? (data.subheadings.trim() ? data.subheadings.split(',').map(s => s.trim()).filter(s => s) : [])
-                : (Array.isArray(data.subheadings) ? data.subheadings.filter(s => typeof s === 'string' && s.trim()) : []);
-
-            const paragraphsArray = typeof data.paragraphs === 'string'
-                ? (data.paragraphs.trim() ? data.paragraphs.split('\n').map(p => p.trim()).filter(p => p) : [])
-                : (Array.isArray(data.paragraphs) ? data.paragraphs.filter(p => typeof p === 'string' && p.trim()) : []);
-
-
-            // Only send fields that are part of the form schema + requestingUserId
+            // Construct the payload for the API update
             const updatePayload = {
                 title: data.title,
                 category: data.category,
                 heading: data.heading,
-                subheadings: subheadingsArray, // Send the processed array
-                paragraphs: paragraphsArray,   // Send the processed array
+                subheadings: subheadingsArray, // Send processed array
+                paragraphs: paragraphsArray,   // Send processed array
                 excerpt: data.excerpt,
-                imageUrl: data.imageUrl, // TODO: Handle image upload separately
+                imageUrl: data.imageUrl, // Handle image upload separately if needed
                 tags: tagsArray,
                 requestingUserId: currentUser.id, // Include user ID for API authorization
             };
 
-            console.log(`[Edit Page] Sending update payload for slug ${slug}:`, updatePayload);
+            // TODO: Implement image upload logic if selectedImage exists
+            if (selectedImage) {
+                 console.warn("Image file selected, but upload functionality is not implemented. Using URL field if provided.");
+                 // In a real app:
+                 // const uploadedImageUrl = await uploadImage(selectedImage);
+                 // updatePayload.imageUrl = uploadedImageUrl;
+            }
 
+            console.log(`[Edit Page] Sending update payload for slug ${slug}:`, updatePayload);
 
             const response = await fetch(`/api/posts/${slug}`, {
                 method: 'PUT',
@@ -195,7 +195,6 @@ export default function EditPostPage() {
             const result = await response.json();
             console.log(`[Edit Page] API response for update:`, result);
 
-
             if (!response.ok) {
                 throw new Error(result.error || 'Failed to update post');
             }
@@ -204,8 +203,8 @@ export default function EditPostPage() {
                 title: 'Post Updated!',
                 description: `The post "${result.post.title}" has been saved.`,
             });
-            // Redirect back to the updated post page
-            router.push(`/blogs/${result.post.slug}`); // Use slug from response if it might change
+            // Redirect back to the updated post page (using the potentially new slug from response)
+            router.push(`/blogs/${result.post.slug}`);
 
         } catch (error) {
             console.error('Failed to update post:', error);
@@ -214,11 +213,24 @@ export default function EditPostPage() {
                 description: error instanceof Error ? error.message : 'An unknown error occurred.',
                 variant: 'destructive',
             });
-            setIsSubmitting(false);
+            setIsSubmitting(false); // Only set submitting false on error
+        }
+        // Don't set isSubmitting to false on success because we redirect
+    };
+
+    // Function to handle image file selection
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setSelectedImage(file);
+            setValue('imageUrl', '', { shouldValidate: true });
+            toast({title: "Image Selected", description: "Image upload not implemented. URL field cleared. Provide a URL instead."});
+        } else {
+            setSelectedImage(null);
         }
     };
 
-    // Loading state while fetching data or checking auth
+    // Loading state UI
     if (isLoadingData || authLoading) {
         return (
             <div className="container mx-auto py-12">
@@ -228,12 +240,17 @@ export default function EditPostPage() {
                         <Skeleton className="h-4 w-3/4" />
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-40 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <div className="flex justify-end">
+                         {/* Match skeleton structure to form fields */}
+                         <Skeleton className="h-10 w-full" /> {/* Title */}
+                         <Skeleton className="h-10 w-full" /> {/* Category */}
+                         <Skeleton className="h-10 w-full" /> {/* Heading */}
+                         <Skeleton className="h-10 w-full" /> {/* Subheadings */}
+                         <Skeleton className="h-40 w-full" /> {/* Paragraphs */}
+                         <Skeleton className="h-20 w-full" /> {/* Excerpt */}
+                         <Skeleton className="h-24 w-full" /> {/* Image */}
+                         <Skeleton className="h-10 w-full" /> {/* Tags */}
+                        <div className="flex justify-end space-x-2">
+                            <Skeleton className="h-10 w-20" />
                             <Skeleton className="h-10 w-24" />
                         </div>
                     </CardContent>
@@ -242,8 +259,9 @@ export default function EditPostPage() {
         );
     }
 
-    // Render nothing or a message if not authorized (should have been redirected, but as fallback)
+    // Render message or redirect if not authorized
     if (!isAuthorized) {
+        // The redirect should handle this, but keep a fallback message
         return (
             <div className="container mx-auto py-12 text-center">
                 <p className="text-destructive">You are not authorized to edit this post.</p>
@@ -251,40 +269,29 @@ export default function EditPostPage() {
         );
     }
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setSelectedImage(file);
-            // TODO: Implement image upload logic here (e.g., to Firebase Storage)
-            // For now, just clear the imageUrl input if a file is selected
-            setValue('imageUrl', '', { shouldValidate: true });
-            toast({title: "Image Selected", description: "Image upload functionality not yet implemented. URL field cleared."})
-        } else {
-            setSelectedImage(null);
-        }
-    };
-
-    // Render the form once loading is complete and user is authorized
+    // Main component render: Edit form
     return (
         <div className="container mx-auto py-12">
-            <Card className="max-w-3xl mx-auto">
+            <Card className="max-w-3xl mx-auto shadow-lg">
                 <CardHeader>
                     <CardTitle className="text-2xl">Edit Blog Post</CardTitle>
                     <CardDescription>Update the details for your post below.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                        {/* Title Input */}
                         <div>
                             <Label htmlFor="title">Title</Label>
-                            <Input id="title" {...register('title')} disabled={isSubmitting} />
+                            <Input id="title" {...register('title')} disabled={isSubmitting} placeholder="Enter a catchy title" />
                             {errors.title && <p className="text-xs text-destructive mt-1">{errors.title.message}</p>}
                         </div>
 
+                        {/* Category Select */}
                         <div>
                             <Label htmlFor="category">Category</Label>
-                            {/* Use Controller or setValue for Select */}
                             <Select
-                                defaultValue={postData?.category} // Set default value from fetched data
+                                // Set default value using defaultValue prop on Select
+                                defaultValue={postData?.category}
                                 onValueChange={(value) => setValue('category', value as PostFormInputs['category'], { shouldValidate: true })}
                                 disabled={isSubmitting}
                             >
@@ -300,80 +307,101 @@ export default function EditPostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Structured Content Input */}
+                        {/* Structured Content: Heading */}
                         <div>
                             <Label htmlFor="heading">Main Heading</Label>
-                            <Input id="heading" {...register('heading')} disabled={isSubmitting} />
+                            <Input id="heading" {...register('heading')} disabled={isSubmitting} placeholder="Main heading for the post"/>
                             {errors.heading && <p className="text-xs text-destructive mt-1">{errors.heading.message}</p>}
                         </div>
 
-                        <div>
-                            <Label htmlFor="subheadings">Subheadings (Optional, comma-separated)</Label>
-                             <Input
-                                id="subheadings"
-                                placeholder="e.g., Introduction, Main Points, Conclusion"
+                         {/* Structured Content: Subheadings */}
+                         <div>
+                            <Label htmlFor="subheadings">Subheadings (Optional)</Label>
+                            <Input id="subheadings"
+                                placeholder="Separate subheadings with commas"
                                 disabled={isSubmitting}
-                                {...register('subheadings')} // Directly register string input
+                                {...register('subheadings')}
                             />
-                            {/* Validation might need adjustment if error expects array */}
-                            {errors.subheadings && typeof errors.subheadings.message === 'string' && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
+                            <p className="text-xs text-muted-foreground mt-1">Comma-separated list.</p>
+                            {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
                         </div>
 
+                        {/* Structured Content: Paragraphs */}
                         <div>
-                            <Label htmlFor="paragraphs">Paragraphs (Optional, separate each with a newline)</Label>
-                            <Textarea
-                                id="paragraphs"
-                                rows={5}
-                                placeholder="Write your blog post content here..."
+                            <Label htmlFor="paragraphs">Paragraphs</Label>
+                            <Textarea id="paragraphs"
+                                rows={8}
+                                placeholder="Write your blog content here. Separate paragraphs with new lines."
                                 disabled={isSubmitting}
-                                {...register('paragraphs')} // Directly register string input
+                                {...register('paragraphs')}
                             />
-                             {/* Validation might need adjustment if error expects array */}
-                            {errors.paragraphs && typeof errors.paragraphs.message === 'string' && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
+                             <p className="text-xs text-muted-foreground mt-1">Each new line is a paragraph.</p>
+                            {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
                         </div>
 
+                        {/* Excerpt */}
                         <div>
                             <Label htmlFor="excerpt">Excerpt (Optional)</Label>
-                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="A short summary of the post (10-200 characters)." disabled={isSubmitting} />
+                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="Short summary (10-200 characters)." disabled={isSubmitting} />
                             {errors.excerpt && <p className="text-xs text-destructive mt-1">{errors.excerpt.message}</p>}
                         </div>
 
+                         {/* Image Handling */}
+                         <div>
+                             <Label>Featured Image</Label>
+                             <div className="flex flex-col gap-4">
+                                 {/* Current/Selected Image Preview */}
+                                 <div className="flex items-center gap-4">
+                                     <Label htmlFor="imageUrl" className="text-sm font-normal w-20 shrink-0">Current URL</Label>
+                                     <Input
+                                         id="imageUrl"
+                                         {...register('imageUrl')}
+                                         placeholder="Paste image URL"
+                                         className="flex-grow"
+                                         disabled={isSubmitting || !!selectedImage}
+                                     />
+                                      {(postData?.imageUrl && !selectedImage) && (
+                                         <img src={postData.imageUrl} alt="Current" className="h-16 w-16 object-cover rounded-md border" />
+                                     )}
+                                      {selectedImage && (
+                                         <img src={URL.createObjectURL(selectedImage)} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
+                                      )}
+                                 </div>
+                                 {errors.imageUrl && <p className="text-xs text-destructive">{errors.imageUrl.message}</p>}
 
-                        <div>
-                            <Label htmlFor="image">Image</Label>
-                            <div className="flex items-center gap-4">
-                                <Input
-                                    id="image"
-                                    type="file"
-                                    accept="image/*"
-                                    disabled={isSubmitting}
-                                    onChange={handleImageChange}
-                                    className="flex-grow"
-                                />
-                                {postData?.imageUrl && !selectedImage && (
-                                     <img src={postData.imageUrl} alt="Current" className="h-16 w-16 object-cover rounded-md" />
-                                 )}
-                                {selectedImage && (
-                                     <img src={URL.createObjectURL(selectedImage)} alt="Preview" className="h-16 w-16 object-cover rounded-md" />
-                                 )}
-                                {/* TODO: Add Crop Button/Functionality */}
-                                {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop</Button> */}
+                                  {/* Image Upload Option */}
+                                 <div className="flex items-center gap-4">
+                                      <Label htmlFor="imageFile" className="text-sm font-normal w-20 shrink-0">Upload New</Label>
+                                     <Input
+                                         id="imageFile"
+                                         type="file"
+                                         accept="image/*"
+                                         disabled={isSubmitting}
+                                         onChange={handleImageChange}
+                                         className="cursor-pointer flex-grow"
+                                     />
+                                 </div>
+                                  <p className="text-xs text-muted-foreground">Upload functionality is not yet implemented. Use the URL field above.</p>
+                                  {/* TODO: Add Crop Button/Functionality */}
+                                  {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image (Not Implemented)</Button> */}
                              </div>
-                              <p className="text-xs text-muted-foreground mt-1">Upload a new image to replace the existing one. Cropping functionality is not yet implemented.</p>
-                             {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>} {/* Assuming imageUrl validation is still useful */}
-                        </div>
+                         </div>
 
+
+                        {/* Tags Input */}
                         <div>
-                            <Label htmlFor="tags">Tags (Optional, comma-separated)</Label>
-                            <Input id="tags" {...register('tags')} placeholder="e.g., tech, lifestyle, tips" disabled={isSubmitting} />
+                            <Label htmlFor="tags">Tags (Optional)</Label>
+                            <Input id="tags" {...register('tags')} placeholder="Comma-separated tags, e.g., tech, tips" disabled={isSubmitting} />
+                             <p className="text-xs text-muted-foreground mt-1">Helps categorize your post.</p>
                             {errors.tags && <p className="text-xs text-destructive mt-1">{errors.tags.message}</p>}
                         </div>
 
-                        <div className="flex justify-end space-x-2">
+                        {/* Action Buttons */}
+                        <div className="flex justify-end space-x-2 pt-4 border-t">
                             <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={isSubmitting}>
+                            <Button type="submit" disabled={isSubmitting} size="lg">
                                 {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
                                 {isSubmitting ? 'Saving...' : 'Save Changes'}
                             </Button>

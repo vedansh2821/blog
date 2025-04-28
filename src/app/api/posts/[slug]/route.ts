@@ -50,10 +50,9 @@ export async function PUT(
 
     try {
         // --- Get Request Body ---
-        // The body should now include the update data AND the ID of the user making the request
         const body = await request.json();
         const { requestingUserId, ...updateData } = body; // Separate user ID from post data
-        const { title, content, category, excerpt, imageUrl, tags, heading, subheadings, paragraphs } = updateData;
+        const { title, category, excerpt, imageUrl, tags, heading, subheadings, paragraphs } = updateData;
 
         // --- Basic Validation ---
         if (!requestingUserId) {
@@ -61,60 +60,40 @@ export async function PUT(
             return NextResponse.json({ error: 'Unauthorized: Missing user identification.' }, { status: 401 });
         }
         if (!title || !category) {
-            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, category).`); // Removed content requirement here
+            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, category).`);
             return NextResponse.json({ error: 'Missing required fields (title, category)' }, { status: 400 });
         }
-
-
-        // --- Construct Content from Structured Data ---
-         // Ensure data exists and is in the correct format before constructing content
-         let constructedContent = '';
-         if (heading && typeof heading === 'string') {
-             constructedContent += `<h1 class="text-2xl font-bold mb-4">${heading}</h1>`;
-         }
-         if (subheadings && Array.isArray(subheadings) && subheadings.length > 0) {
-             constructedContent += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`; // Added title for subheadings section
-             subheadings.forEach(subheading => {
-                if (typeof subheading === 'string' && subheading.trim()) {
-                    constructedContent += `<li class="mb-2"><h3 class="text-lg font-medium">${subheading.trim()}</h3></li>`; // Added styling
-                }
-             });
-             constructedContent += `</ul>`;
-         }
-         if (paragraphs && Array.isArray(paragraphs) && paragraphs.length > 0) {
-             const validParagraphs = paragraphs.filter(p => typeof p === 'string' && p.trim());
-             if (validParagraphs.length > 0) {
-                 constructedContent += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`; // Wrap paragraphs
-             }
-         }
-
-         if (!constructedContent && content) { // Fallback to existing content if structured data is empty
-             constructedContent = content;
+         // Validate structured content presence if needed
+         if (!heading && (!paragraphs || paragraphs.length === 0)) {
+             console.error(`[API PUT /api/posts/${slug}] Error: Missing required content structure (heading or paragraphs).`);
+             return NextResponse.json({ error: 'Post must contain at least a main heading or paragraphs.' }, { status: 400 });
          }
 
 
-        // Prepare data for mock DB function, using requestingUserId as the authorId
+        // Prepare data for mock DB function
+        // The updatePost function in mock-sql will handle content construction based on these fields
         const updatePayload = {
             title,
             category,
             heading, // Send raw heading
-            subheadings, // Send raw subheadings array
-            paragraphs, // Send raw paragraphs array
-            content: constructedContent, // Send the constructed or original content
+            subheadings: Array.isArray(subheadings) ? subheadings : [], // Ensure it's an array
+            paragraphs: Array.isArray(paragraphs) ? paragraphs : [],   // Ensure it's an array
+            // content is reconstructed in updatePost, no need to send it here unless explicitly needed
             excerpt,
             imageUrl,
-            tags,
+            tags: Array.isArray(tags) ? tags : [], // Ensure tags is an array
             requestingUserId // For authorization check
         };
 
+        console.log(`[API PUT /api/posts/${slug}] Payload for updatePost function:`, updatePayload);
+
+
         // --- Call DB Update with Authorization ---
-        // Pass the requesting user's ID for the authorization check within updatePost
         const updatedPost = await updatePost(slug, updatePayload); // Send the correct payload
 
         if (!updatedPost) {
-            // updatePost returns null if not found (after authorization check)
+            // updatePost returns null if not found or unauthorized
             console.warn(`[API PUT /api/posts/${slug}] Update failed: Post not found or authorization failed for user ${requestingUserId}.`);
-            // Return 404 for not found, but authorization error is handled inside updatePost
              return NextResponse.json({ error: 'Post not found or you are not authorized to edit it.' }, { status: 404 });
         }
 
@@ -123,8 +102,7 @@ export async function PUT(
             ...updatedPost,
             publishedAt: new Date(updatedPost.publishedAt).toISOString(),
             updatedAt: updatedPost.updatedAt ? new Date(updatedPost.updatedAt).toISOString() : undefined,
-            // Ensure author dates are also handled if necessary
-             author: {
+            author: {
                 ...updatedPost.author,
                 joinedAt: updatedPost.author.joinedAt instanceof Date ? updatedPost.author.joinedAt.toISOString() : updatedPost.author.joinedAt,
              }
@@ -152,10 +130,7 @@ export async function DELETE(
 
     try {
         // --- Get Requesting User ID ---
-        // Ideally from a verified session/token on the server.
-        // For now, we'll expect it in the request body or headers (less secure for DELETE).
-        // Let's assume it's passed as a header `X-Requesting-User-ID` for this mock scenario.
-        // **Important**: For production, verify a secure session token/cookie instead.
+        // Use secure method (e.g., session/token) in production
         const requestingUserId = request.headers.get('X-Requesting-User-ID');
 
         if (!requestingUserId) {
@@ -166,18 +141,17 @@ export async function DELETE(
         console.log(`[API DELETE /api/posts/${slug}] Attempting delete by user: ${requestingUserId}`);
 
         // --- Call DB Delete with Authorization ---
-        // Pass the requesting user's ID for the authorization check within deletePost
         const deleted = await deletePost(slug, requestingUserId);
 
         if (!deleted) {
-            // deletePost returns false if not found (after authorization check)
+            // deletePost returns false if not found or unauthorized
             console.warn(`[API DELETE /api/posts/${slug}] Delete failed: Post not found or authorization failed for user ${requestingUserId}.`);
-            // Return 404 for not found, but authorization error is handled inside deletePost
              return NextResponse.json({ error: 'Post not found or you are not authorized to delete it.' }, { status: 404 });
         }
 
         console.log(`[API DELETE /api/posts/${slug}] Post deleted successfully by user ${requestingUserId}.`);
-        return NextResponse.json({ message: 'Post deleted successfully' });
+        // Return 204 No Content for successful deletion as per REST best practices
+        return new NextResponse(null, { status: 204 });
 
     } catch (error) {
         console.error(`[API DELETE /api/posts/${slug}] Error deleting post:`, error);
