@@ -6,6 +6,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart, LineChart, PieChart, MessageSquare } from 'lucide-react'; // Example icons, Added MessageSquare
 import { ChartTooltip, ChartTooltipContent, ChartContainer } from "@/components/ui/chart"
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Pie, PieChart as RechartsPieChart, ResponsiveContainer, Tooltip } from "recharts"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Construction, } from 'lucide-react';
+import { cn } from '@/lib/utils'; // Import cn
+
 
 // Mock data fetching function for analytics
 const fetchAnalyticsData = async () => {
@@ -113,6 +117,13 @@ export default function AdminDashboardPage() {
     return (
         <div className="container mx-auto py-8">
             <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+                <Alert className="mb-12 max-w-xl mx-auto border-primary/50 bg-primary/5 text-primary">
+                 <Construction className="h-5 w-5" />
+                 <AlertTitle>Under Development</AlertTitle>
+                 <AlertDescription>
+                   This section is currently being built. More  metrics, charts, and management tools are coming soon!
+                 </AlertDescription>
+               </Alert>
 
              {/* Key Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
