@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart, LineChart, PieChart } from 'lucide-react'; // Example icons
+import { BarChart, LineChart, PieChart, MessageSquare } from 'lucide-react'; // Example icons, Added MessageSquare
 import { ChartTooltip, ChartTooltipContent, ChartContainer } from "@/components/ui/chart"
 import { Bar, BarChart as RechartsBarChart, CartesianGrid, XAxis, YAxis, Line, LineChart as RechartsLineChart, Pie, PieChart as RechartsPieChart, ResponsiveContainer, Tooltip } from "recharts"
 
