@@ -1,5 +1,5 @@
 import {genkit} from 'genkit';
-import {googleAI} from '@genkit-ai/googleai';
+//import {googleAI} from '@genkit-ai/googleai';
 
 const googleApiKey = process.env.GOOGLE_GENAI_API_KEY;
 
@@ -26,9 +26,9 @@ if (!googleApiKey) {
 export const ai = genkit({
   promptDir: './prompts',
   plugins: [
-    googleAI({
+    /*googleAI({
       apiKey: googleApiKey, // Use the checked variable
-    }),
+    }),*/
   ],
   // Log level set to 'debug' for more detailed output, can be 'info' for less noise
   logLevel: 'debug',
@@ -38,3 +38,4 @@ export const ai = genkit({
   //   exporter: { /* configuration */ },
   // },
 });
+
