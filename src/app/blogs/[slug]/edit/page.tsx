@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -20,16 +21,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 // Ensure categories match those used elsewhere
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
-// Schema for the edit form
+// Updated Schema for the edit form: Use 'content' instead of structured fields
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
-    heading: z.string().min(5, { message: 'Heading must be at least 5 characters.' }),
-    // Store raw input as strings, process before sending
-    subheadings: z.string().optional(), // Comma-separated string
-    paragraphs: z.string().optional(),   // Newline-separated string
+    content: z.string().min(50, { message: 'Content must be at least 50 characters.' }), // Main content field
     excerpt: z.string().min(10).max(200, { message: 'Excerpt must be between 10 and 200 characters.' }).optional().or(z.literal('')),
     imageUrl: z.string().url({ message: 'Please enter a valid image URL.' }).optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
@@ -58,6 +56,8 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
                  ...data.author,
                  joinedAt: data.author.joinedAt ? new Date(data.author.joinedAt) : undefined,
              } : undefined,
+            // Ensure content is a string, even if fetched data is structured
+            content: typeof data.content === 'string' ? data.content : (data.paragraphs?.join('\n') || ''),
         };
     } catch (error) {
         console.error(`[Edit Page] Error fetching post details for ${slug}:`, error);
@@ -84,9 +84,7 @@ export default function EditPostPage() {
         defaultValues: { // Initialize with empty strings or undefined
             title: '',
             category: undefined,
-            heading: '',
-            subheadings: '',
-            paragraphs: '',
+            content: '', // Use content field
             excerpt: '',
             imageUrl: '',
             tags: '',
@@ -134,13 +132,10 @@ export default function EditPostPage() {
             reset({
                 title: fetchedPost.title || '',
                 category: fetchedPost.category as PostFormInputs['category'], // Cast category
-                heading: fetchedPost.heading || '',
-                // Convert arrays back to strings for form inputs
-                subheadings: fetchedPost.subheadings?.join(', ') || '',
-                paragraphs: fetchedPost.paragraphs?.join('\n') || '',
+                content: fetchedPost.content || '', // Use content field
                 excerpt: fetchedPost.excerpt || '',
                 imageUrl: fetchedPost.imageUrl || '',
-                tags: fetchedPost.tags?.join(', ') || '',
+                tags: fetchedPost.tags?.join(', ') || '', // Convert tags array back to string
             });
 
             setIsLoadingData(false);
@@ -158,18 +153,14 @@ export default function EditPostPage() {
         }
         setIsSubmitting(true);
         try {
-            // Process tags, subheadings, and paragraphs from string input to arrays
+            // Process tags from string input to array
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-            const subheadingsArray = data.subheadings ? data.subheadings.split(',').map(s => s.trim()).filter(s => s) : [];
-            const paragraphsArray = data.paragraphs ? data.paragraphs.split('\n').map(p => p.trim()).filter(p => p) : [];
 
-            // Construct the payload for the API update
+            // Construct the payload for the API update - send 'content' directly
             const updatePayload = {
                 title: data.title,
                 category: data.category,
-                heading: data.heading,
-                subheadings: subheadingsArray, // Send processed array
-                paragraphs: paragraphsArray,   // Send processed array
+                content: data.content, // Send the content from the textarea
                 excerpt: data.excerpt,
                 imageUrl: data.imageUrl, // Handle image upload separately if needed
                 tags: tagsArray,
@@ -243,9 +234,7 @@ export default function EditPostPage() {
                          {/* Match skeleton structure to form fields */}
                          <Skeleton className="h-10 w-full" /> {/* Title */}
                          <Skeleton className="h-10 w-full" /> {/* Category */}
-                         <Skeleton className="h-10 w-full" /> {/* Heading */}
-                         <Skeleton className="h-10 w-full" /> {/* Subheadings */}
-                         <Skeleton className="h-40 w-full" /> {/* Paragraphs */}
+                         <Skeleton className="h-64 w-full" /> {/* Content */}
                          <Skeleton className="h-20 w-full" /> {/* Excerpt */}
                          <Skeleton className="h-24 w-full" /> {/* Image */}
                          <Skeleton className="h-10 w-full" /> {/* Tags */}
@@ -307,42 +296,24 @@ export default function EditPostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Structured Content: Heading */}
+                        {/* Content Textarea */}
                         <div>
-                            <Label htmlFor="heading">Main Heading</Label>
-                            <Input id="heading" {...register('heading')} disabled={isSubmitting} placeholder="Main heading for the post"/>
-                            {errors.heading && <p className="text-xs text-destructive mt-1">{errors.heading.message}</p>}
+                            <Label htmlFor="content">Content</Label>
+                            <Textarea id="content"
+                                rows={15} // Increased rows
+                                placeholder="Write your blog content here. You can use Markdown or basic HTML for formatting."
+                                disabled={isSubmitting}
+                                {...register('content')}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">The main body of your post.</p>
+                            {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
                         </div>
 
-                         {/* Structured Content: Subheadings */}
-                         <div>
-                            <Label htmlFor="subheadings">Subheadings (Optional)</Label>
-                            <Input id="subheadings"
-                                placeholder="Separate subheadings with commas"
-                                disabled={isSubmitting}
-                                {...register('subheadings')}
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">Comma-separated list.</p>
-                            {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
-                        </div>
-
-                        {/* Structured Content: Paragraphs */}
-                        <div>
-                            <Label htmlFor="paragraphs">Paragraphs</Label>
-                            <Textarea id="paragraphs"
-                                rows={8}
-                                placeholder="Write your blog content here. Separate paragraphs with new lines."
-                                disabled={isSubmitting}
-                                {...register('paragraphs')}
-                            />
-                             <p className="text-xs text-muted-foreground mt-1">Each new line is a paragraph.</p>
-                            {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
-                        </div>
 
                         {/* Excerpt */}
                         <div>
                             <Label htmlFor="excerpt">Excerpt (Optional)</Label>
-                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="Short summary (10-200 characters)." disabled={isSubmitting} />
+                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="Short summary (10-200 characters). If empty, one will be generated." disabled={isSubmitting} />
                             {errors.excerpt && <p className="text-xs text-destructive mt-1">{errors.excerpt.message}</p>}
                         </div>
 
@@ -381,7 +352,7 @@ export default function EditPostPage() {
                                          className="cursor-pointer flex-grow"
                                      />
                                  </div>
-                                  <p className="text-xs text-muted-foreground">Upload functionality is not yet implemented. Use the URL field above.</p>
+                                  <p className="text-xs text-muted-foreground">Upload & Crop functionality is not yet implemented. Use the URL field above.</p>
                                   {/* TODO: Add Crop Button/Functionality */}
                                   {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image (Not Implemented)</Button> */}
                              </div>

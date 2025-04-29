@@ -86,14 +86,15 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            views: data.views ?? 0,
            rating: data.rating ?? 0,
            ratingCount: data.ratingCount ?? 0,
-           // Add defaults for new structured content fields if missing from old posts
-           heading: data.heading || data.title || 'Untitled Post', // Use title as fallback for heading
-           subheadings: data.subheadings || [],
-           paragraphs: data.paragraphs || [],
-           content: data.content || '', // Ensure content is present
+           // Use content directly, ensure it's a string
+           content: typeof data.content === 'string' ? data.content : '',
            excerpt: data.excerpt || '', // Ensure excerpt is present
            imageUrl: data.imageUrl || `https://picsum.photos/seed/${data.id || 'default'}/1200/600`, // Default image
            tags: data.tags || [], // Ensure tags is an array
+           // Keep optional structured fields if they exist in the response
+           heading: data.heading,
+           subheadings: data.subheadings || [],
+           paragraphs: data.paragraphs || [],
        };
       console.log(`[fetchPostDetails] Post data received for slug: ${slug}`, post);
       return post;
@@ -108,7 +109,7 @@ const createAuthorObject = (user: any): Author => {
     return {
         id: user?.id || 'unknown',
         name: user?.name || 'Unknown Author',
-        slug: user?.id || 'unknown',
+        slug: user?.id || 'unknown', // Use ID as slug for simplicity
         avatarUrl: user?.photoURL || `https://i.pravatar.cc/40?u=unknown`,
         bio: user?.bio || 'Author information not available.',
         joinedAt: user?.joinedAt ? new Date(user.joinedAt) : new Date(0), // Default date
@@ -201,11 +202,9 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
              excerpt: post.excerpt || post.title || 'No excerpt available',
              imageUrl: post.imageUrl || `https://picsum.photos/seed/${post.id}/600/400`,
              category: post.category || 'Uncategorized',
-             // Optional structured content fields
-             heading: post.heading,
-             subheadings: post.subheadings || [],
-             paragraphs: post.paragraphs || [],
              tags: post.tags || [], // Ensure tags is an array
+             // Content is the primary source now
+             content: post.content || '',
         }));
 
 
@@ -782,21 +781,11 @@ export default function BlogPostPage() {
              />
          </div>
 
-          {/* Use prose-lg for better readability */}
-          <div
+          {/* Render content safely - Use dangerouslySetInnerHTML for HTML from backend */}
+          {/* Add Markdown processing here if content is in Markdown format */}
+           <div
              className="prose prose-lg dark:prose-invert max-w-none"
-             // Render content safely based on structured data if available, otherwise use raw content
-             // Prefer structured data for rendering if it exists
-             dangerouslySetInnerHTML={
-                 { __html: (post.heading || (post.subheadings && post.subheadings.length > 0) || (post.paragraphs && post.paragraphs.length > 0))
-                     ? `
-                         ${post.heading ? `<h1 class="text-2xl font-bold mb-4">${post.heading}</h1>` : ''}
-                         ${post.subheadings && post.subheadings.length > 0 ? `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>${post.subheadings.map(sub => `<li class="mb-2"><h3 class="text-lg font-medium">${sub.trim()}</h3></li>`).join('')}</ul>` : ''}
-                         ${post.paragraphs && post.paragraphs.length > 0 ? `<div class="prose-p:my-4">${post.paragraphs.filter(p=>p && p.trim()).map(p => `<p>${p.trim()}</p>`).join('')}</div>` : ''}
-                     `
-                     : (typeof post.content === 'string' ? post.content : '') // Fallback to raw content
-                 }
-             }
+             dangerouslySetInnerHTML={{ __html: post.content || '' }}
            />
 
             {tags.length > 0 && (
