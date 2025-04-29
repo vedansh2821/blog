@@ -1,3 +1,4 @@
+
 // src/types/blog.ts
 
 export interface Author {
@@ -26,7 +27,7 @@ export interface Post {
     id: string;
     title: string;
     slug: string;
-    content: string; // HTML content, potentially constructed
+    content: string; // Primary field for blog content (e.g., Markdown, HTML)
     imageUrl: string;
     category: string;
     author: Author; // Embed full author details
@@ -37,9 +38,10 @@ export interface Post {
     rating?: number; // Optional average rating
     views?: number; // Optional view count
     excerpt: string; // Ensure excerpt is always present
-    heading: string; // Always present (can fallback to title)
-    subheadings: string[]; // Always present (can be empty array)
-    paragraphs: string[]; // Always present (can be empty array)
+    // Keep structured fields potentially for rendering or backend processing, but 'content' is primary
+    heading?: string; // Optional: Can be derived from content
+    subheadings?: string[]; // Optional: Can be derived from content
+    paragraphs?: string[]; // Optional: Can be derived from content
 }
 
 // RelatedPost type omits full content and some details for brevity in listings

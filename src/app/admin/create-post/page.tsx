@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -19,15 +20,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 // Ensure categories match those used in mock-sql or fetched dynamically
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
+// Updated schema: Replace heading, subheadings, paragraphs with 'content'
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
-    heading: z.string().min(5, { message: 'Heading must be at least 5 characters.' }),
-    // Store raw input as strings, process before sending
-    subheadings: z.string().optional(), // Comma-separated string
-    paragraphs: z.string().optional(),   // Newline-separated string
+    content: z.string().min(50, { message: 'Content must be at least 50 characters.' }), // Main content field
     excerpt: z.string().min(10).max(200, { message: 'Excerpt must be between 10 and 200 characters.' }).optional().or(z.literal('')),
     imageUrl: z.string().url({ message: 'Please enter a valid image URL.' }).optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
@@ -47,9 +46,7 @@ export default function CreatePostPage() {
         defaultValues: {
             title: '',
             category: undefined,
-            heading: '',
-            subheadings: '',
-            paragraphs: '',
+            content: '', // Initialize content
             excerpt: '',
             imageUrl: '',
             tags: '',
@@ -73,18 +70,14 @@ export default function CreatePostPage() {
 
         setIsSubmitting(true);
         try {
-            // Process tags, subheadings, and paragraphs from string input to arrays
+            // Process tags from string input to array
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-            const subheadingsArray = data.subheadings ? data.subheadings.split(',').map(s => s.trim()).filter(s => s) : [];
-            const paragraphsArray = data.paragraphs ? data.paragraphs.split('\n').map(p => p.trim()).filter(p => p) : [];
 
-            // Construct the payload for the API
+            // Construct the payload for the API - send 'content' directly
             const postData = {
                 title: data.title,
                 category: data.category,
-                heading: data.heading,
-                subheadings: subheadingsArray, // Send processed array
-                paragraphs: paragraphsArray,   // Send processed array
+                content: data.content, // Send the content from the textarea
                 excerpt: data.excerpt,
                 imageUrl: data.imageUrl, // Image URL takes precedence if file not handled
                 tags: tagsArray,
@@ -92,9 +85,6 @@ export default function CreatePostPage() {
             };
 
             // TODO: Implement image upload logic if selectedImage exists
-            // If an image file is selected, upload it (e.g., to Firebase Storage)
-            // and get the URL. Then, set postData.imageUrl to that URL.
-            // For now, we only use the URL input.
             if (selectedImage) {
                  console.warn("Image file selected, but upload functionality is not implemented. Using URL field if provided.");
                  // In a real app:
@@ -160,13 +150,12 @@ export default function CreatePostPage() {
                         <Skeleton className="h-4 w-3/4" />
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-10 w-full" />
-                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" /> {/* Title */}
+                        <Skeleton className="h-10 w-full" /> {/* Category */}
+                        <Skeleton className="h-64 w-full" /> {/* Content */}
+                        <Skeleton className="h-20 w-full" /> {/* Excerpt */}
+                        <Skeleton className="h-24 w-full" /> {/* Image */}
+                        <Skeleton className="h-10 w-full" /> {/* Tags */}
                         <div className="flex justify-end">
                             <Skeleton className="h-10 w-24" />
                         </div>
@@ -212,42 +201,23 @@ export default function CreatePostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Structured Content: Heading */}
+                        {/* Content Textarea */}
                         <div>
-                            <Label htmlFor="heading">Main Heading</Label>
-                            <Input id="heading" {...register('heading')} disabled={isSubmitting} placeholder="Main heading for the post"/>
-                            {errors.heading && <p className="text-xs text-destructive mt-1">{errors.heading.message}</p>}
-                        </div>
-
-                        {/* Structured Content: Subheadings */}
-                        <div>
-                            <Label htmlFor="subheadings">Subheadings (Optional)</Label>
-                            <Input id="subheadings"
-                                placeholder="Separate subheadings with commas, e.g., Intro, Point 1, Conclusion"
+                            <Label htmlFor="content">Content</Label>
+                            <Textarea id="content"
+                                rows={15} // Increased rows for better writing experience
+                                placeholder="Write your blog content here. You can use Markdown or basic HTML for formatting (e.g., # Heading, **bold**, *italic*)."
                                 disabled={isSubmitting}
-                                {...register('subheadings')}
+                                {...register('content')}
                             />
-                            <p className="text-xs text-muted-foreground mt-1">Comma-separated list.</p>
-                            {errors.subheadings && <p className="text-xs text-destructive mt-1">{errors.subheadings.message}</p>}
-                        </div>
-
-                        {/* Structured Content: Paragraphs */}
-                        <div>
-                            <Label htmlFor="paragraphs">Paragraphs</Label>
-                            <Textarea id="paragraphs"
-                                rows={8} // Increased rows for better writing experience
-                                placeholder="Write your blog content here. Separate paragraphs with a new line (press Enter)."
-                                disabled={isSubmitting}
-                                {...register('paragraphs')}
-                            />
-                             <p className="text-xs text-muted-foreground mt-1">Each new line will be treated as a separate paragraph.</p>
-                            {errors.paragraphs && <p className="text-xs text-destructive mt-1">{errors.paragraphs.message}</p>}
+                             <p className="text-xs text-muted-foreground mt-1">This is the main body of your post.</p>
+                            {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
                         </div>
 
                         {/* Excerpt */}
                         <div>
                             <Label htmlFor="excerpt">Excerpt (Optional)</Label>
-                            <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="A short summary shown in post listings (10-200 characters)." disabled={isSubmitting} />
+                            <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="A short summary shown in post listings (10-200 characters). If left empty, one will be generated." disabled={isSubmitting} />
                             {errors.excerpt && <p className="text-xs text-destructive mt-1">{errors.excerpt.message}</p>}
                         </div>
 

@@ -1,3 +1,4 @@
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -51,38 +52,36 @@ export async function PUT(
     try {
         // --- Get Request Body ---
         const body = await request.json();
-        const { requestingUserId, ...updateData } = body; // Separate user ID from post data
-        const { title, category, excerpt, imageUrl, tags, heading, subheadings, paragraphs } = updateData;
+        // Extract requestingUserId and updateData including 'content'
+        const { requestingUserId, ...updateData } = body;
+        const { title, category, content, excerpt, imageUrl, tags } = updateData;
 
         // --- Basic Validation ---
         if (!requestingUserId) {
             console.error(`[API PUT /api/posts/${slug}] Error: Missing requestingUserId in request body.`);
             return NextResponse.json({ error: 'Unauthorized: Missing user identification.' }, { status: 401 });
         }
-        if (!title || !category) {
-            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, category).`);
-            return NextResponse.json({ error: 'Missing required fields (title, category)' }, { status: 400 });
+        if (!title || !category || !content) {
+            console.error(`[API PUT /api/posts/${slug}] Error: Missing required fields (title, category, content).`);
+            return NextResponse.json({ error: 'Missing required fields (title, category, content)' }, { status: 400 });
         }
-         // Validate structured content presence if needed
-         if (!heading && (!paragraphs || paragraphs.length === 0)) {
-             console.error(`[API PUT /api/posts/${slug}] Error: Missing required content structure (heading or paragraphs).`);
-             return NextResponse.json({ error: 'Post must contain at least a main heading or paragraphs.' }, { status: 400 });
+         if (content.length < 50) {
+             console.error(`[API PUT /api/posts/${slug}] Error: Content is too short.`);
+             return NextResponse.json({ error: 'Content must be at least 50 characters.' }, { status: 400 });
          }
 
 
         // Prepare data for mock DB function
-        // The updatePost function in mock-sql will handle content construction based on these fields
+        // The updatePost function in mock-sql will handle content reconstruction/excerpt generation if needed
         const updatePayload = {
             title,
             category,
-            heading, // Send raw heading
-            subheadings: Array.isArray(subheadings) ? subheadings : [], // Ensure it's an array
-            paragraphs: Array.isArray(paragraphs) ? paragraphs : [],   // Ensure it's an array
-            // content is reconstructed in updatePost, no need to send it here unless explicitly needed
-            excerpt,
+            content, // Pass raw content
+            excerpt, // Pass excerpt if provided
             imageUrl,
             tags: Array.isArray(tags) ? tags : [], // Ensure tags is an array
             requestingUserId // For authorization check
+             // heading, subheadings, paragraphs will be derived/updated within updatePost if necessary
         };
 
         console.log(`[API PUT /api/posts/${slug}] Payload for updatePost function:`, updatePayload);

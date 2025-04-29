@@ -1,4 +1,5 @@
 
+
 // IMPORTANT: This is an IN-MEMORY MOCK simulating a SQL database.
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
@@ -169,7 +170,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
     return {
         id: user.id,
         name: user.name || user.email || 'Unnamed Author',
-        slug: user.id,
+        slug: user.id, // Use user ID as author slug for simplicity
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Posts by ${user.name || user.email}`,
         joinedAt: new Date(user.joinedAt),
@@ -211,45 +212,45 @@ const generateSlug = (title: string): string => {
     return finalSlug;
 };
 
-// Helper to construct HTML content from structured data
-const constructContent = (heading?: string, subheadings?: string[], paragraphs?: string[]): string => {
-    let content = '';
-    if (heading) {
-        content += `<h1 class="text-2xl font-bold mb-4">${heading.trim()}</h1>`;
+// Helper to generate excerpt from content (simple text extraction)
+const generateExcerpt = (content: string, maxLength: number = 150): string => {
+    const textContent = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    if (textContent.length <= maxLength) {
+        return textContent;
     }
-    if (subheadings && subheadings.length > 0) {
-        const validSubheadings = subheadings.filter(s => typeof s === 'string' && s.trim());
-        if (validSubheadings.length > 0) {
-            content += `<h2 class="text-xl font-semibold mt-6 mb-3">Subheadings</h2><ul>`;
-            validSubheadings.forEach(sub => content += `<li class="mb-2"><h3 class="text-lg font-medium">${sub.trim()}</h3></li>`);
-            content += `</ul>`;
-        }
-    }
-    if (paragraphs && paragraphs.length > 0) {
-        const validParagraphs = paragraphs.filter(p => typeof p === 'string' && p.trim());
-        if (validParagraphs.length > 0) {
-            content += `<div class="prose-p:my-4">${validParagraphs.map(p => `<p>${p.trim()}</p>`).join('')}</div>`;
-        }
-    }
-     // Fallback content if structure yields nothing
-    if (!content.trim()) {
-        content = "<p>This post is currently empty.</p>";
-    }
-    return content;
+    return textContent.substring(0, maxLength) + '...';
 };
 
+// Helper to extract potential heading from content (basic: first H1 or bolded line)
+const extractHeading = (content: string, fallbackTitle: string): string => {
+     // Try finding first H1 tag
+    const h1Match = content.match(/<h1[^>]*>(.*?)<\/h1>/i);
+    if (h1Match && h1Match[1]) {
+        return h1Match[1].trim();
+    }
+     // Try finding first Markdown H1 (# Heading)
+     const mdH1Match = content.match(/^#\s+(.*)/m);
+     if (mdH1Match && mdH1Match[1]) {
+         return mdH1Match[1].trim();
+     }
+    // Try finding first bolded line (Markdown or HTML)
+    const boldMatch = content.match(/^\s*(?:\*\*|__)(.*?)(?:\*\*|__)\s*$/m) || content.match(/<strong[^>]*>(.*?)<\/strong>/i);
+    if (boldMatch && boldMatch[1]) {
+        return boldMatch[1].trim();
+    }
+    return fallbackTitle; // Fallback to post title
+}
+
 export const createPost = async (
-    // Use a more precise type for incoming data
+    // Use a more precise type for incoming data, focusing on 'content'
      postData: {
          title: string;
          category: string;
          authorId: string;
+         content: string; // Main content from textarea
          excerpt?: string;
          imageUrl?: string;
          tags?: string[];
-         heading?: string;
-         subheadings?: string[];
-         paragraphs?: string[];
      }
 ): Promise<Post> => {
     const author = await findUserById(postData.authorId);
@@ -257,17 +258,16 @@ export const createPost = async (
         throw new Error(`[Mock DB createPost] Author not found for ID: ${postData.authorId}`);
     }
 
-    const constructedContent = constructContent(postData.heading, postData.subheadings, postData.paragraphs);
-    console.log('[Mock DB createPost] Constructed content length:', constructedContent.length);
-
     const now = new Date();
     const generatedSlug = generateSlug(postData.title);
+    const autoExcerpt = generateExcerpt(postData.content);
+    const extractedHeading = extractHeading(postData.content, postData.title);
 
     const newPost: Post = {
         id: `post-${postIdCounter++}`,
         slug: generatedSlug,
         title: postData.title,
-        content: constructedContent,
+        content: postData.content, // Store the raw content
         imageUrl: postData.imageUrl || `https://picsum.photos/seed/post${postIdCounter}/1200/600`,
         category: postData.category,
         author: createAuthorObject(author),
@@ -275,15 +275,16 @@ export const createPost = async (
         updatedAt: now,
         commentCount: 0,
         views: Math.floor(Math.random() * 100),
-        // Auto-generate excerpt from constructed content if not provided
-        excerpt: postData.excerpt || constructedContent.replace(/<[^>]*>/g, '').substring(0, 150) + '...',
+        // Use provided excerpt or generate one
+        excerpt: postData.excerpt || autoExcerpt,
         tags: postData.tags || [],
         rating: parseFloat((Math.random() * 1 + 3.5).toFixed(1)),
         ratingCount: Math.floor(Math.random() * 10) + 1,
-        // Store raw structured data alongside constructed content
-        heading: postData.heading || postData.title,
-        subheadings: postData.subheadings || [],
-        paragraphs: postData.paragraphs || [],
+        // Store derived or fallback heading
+        heading: extractedHeading,
+        // Structured fields might be empty if not derivable or stored
+        subheadings: [], // Could potentially parse from content if needed
+        paragraphs: [], // Could potentially parse from content if needed
     };
 
     console.log(`[Mock DB createPost] Creating post: Title="${newPost.title}", Slug="${newPost.slug}", ID="${newPost.id}"`);
@@ -403,6 +404,7 @@ export const findPosts = async (options: {
 
 export const updatePost = async (
     slug: string,
+    // Update payload focuses on 'content'
     updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'>> & { requestingUserId: string }
 ): Promise<Post | null> => {
     const lowerCaseSlug = slug?.trim().toLowerCase();
@@ -440,30 +442,23 @@ export const updatePost = async (
         console.log(`[Mock DB updatePost] Title changed. New unique slug generated: "${newSlug}"`);
     }
 
-    // Reconstruct content if structured fields are updated
-    const hasStructureUpdate = updateData.heading !== undefined || updateData.subheadings !== undefined || updateData.paragraphs !== undefined;
-    let updatedContent = originalPost.content; // Default to original
-    if (hasStructureUpdate) {
-         console.log(`[Mock DB updatePost] Structured content update detected.`);
-         // Use updated values if provided, otherwise fall back to original post's values for reconstruction
-         updatedContent = constructContent(
-            updateData.heading ?? originalPost.heading,
-            updateData.subheadings ?? originalPost.subheadings,
-            updateData.paragraphs ?? originalPost.paragraphs
-        );
-    } else if (updateData.content !== undefined) {
-        // If only raw content is updated, use that
-         console.log(`[Mock DB updatePost] Raw content update detected.`);
-        updatedContent = updateData.content;
-    }
+    // Use updated content directly if provided
+    const updatedContent = updateData.content ?? originalPost.content;
+    console.log(`[Mock DB updatePost] Using updated content (length: ${updatedContent.length})`);
 
     // Auto-update excerpt if content changed and no new excerpt provided
     let updatedExcerpt = updateData.excerpt ?? originalPost.excerpt;
-     if ((hasStructureUpdate || updateData.content !== undefined) && updateData.excerpt === undefined) {
-         updatedExcerpt = updatedContent.replace(/<[^>]*>/g, '').substring(0, 150) + '...';
+     if (updateData.content !== undefined && updateData.excerpt === undefined) {
+         updatedExcerpt = generateExcerpt(updatedContent);
          console.log(`[Mock DB updatePost] Auto-generating excerpt.`);
      }
 
+    // Extract heading from updated content if content was updated
+    let updatedHeading = originalPost.heading;
+    if (updateData.content !== undefined) {
+        updatedHeading = extractHeading(updatedContent, updateData.title ?? originalPost.title);
+        console.log(`[Mock DB updatePost] Extracting heading from updated content.`);
+    }
 
     // --- Apply Updates ---
     const updatedPost: Post = {
@@ -473,13 +468,14 @@ export const updatePost = async (
         ...(updateData.category !== undefined && { category: updateData.category }),
         ...(updateData.imageUrl !== undefined && { imageUrl: updateData.imageUrl }),
         ...(updateData.tags !== undefined && { tags: updateData.tags }),
-        ...(updateData.heading !== undefined && { heading: updateData.heading }),
-        ...(updateData.subheadings !== undefined && { subheadings: updateData.subheadings }),
-        ...(updateData.paragraphs !== undefined && { paragraphs: updateData.paragraphs }),
+        content: updatedContent, // Use the updated content
         slug: newSlug, // Use the potentially updated slug
-        content: updatedContent, // Use the potentially updated content
         excerpt: updatedExcerpt, // Use the potentially updated excerpt
+        heading: updatedHeading, // Use the potentially updated heading
         updatedAt: new Date(), // Always update the timestamp
+        // Explicitly do NOT update structured fields unless handled separately
+        subheadings: originalPost.subheadings,
+        paragraphs: originalPost.paragraphs,
     };
 
     // Replace the old post with the updated one in the array
@@ -487,7 +483,7 @@ export const updatePost = async (
     console.log(`[Mock DB updatePost] Post "${updatedPost.title}" (ID: ${updatedPost.id}) updated successfully.`);
 
     // Return the updated post with full author details
-    const author = await findUserById(updatedPost.author.id); // Re-fetch author in case details changed (though unlikely here)
+    const author = await findUserById(updatedPost.author.id); // Re-fetch author
     return {
         ...updatedPost,
         author: createAuthorObject(author), // Ensure author object is correct
@@ -592,20 +588,28 @@ const seedData = async () => {
        });
         console.log(`[Mock DB Seed] User: ${user2.email}, Pass: ${alexPassword}`);
 
-        // Create posts
+        // Create posts using 'content' field
         await createPost({
             title: "Mastering TypeScript for Modern Web Development",
             category: "Technology",
             authorId: adminUser.id, // Vedansh
             tags: ["typescript", "web development", "javascript", "react"],
             imageUrl: `https://picsum.photos/seed/typescript-mastery/1200/600`,
-            heading: "Unlocking the Power of TypeScript",
-            subheadings: ["Why TypeScript?", "Core Concepts", "Advanced Techniques"],
-            paragraphs: [
-                "TypeScript enhances JavaScript by adding static types, making code more predictable and maintainable, especially in large projects.",
-                "Static Typing: Catch errors during development, not at runtime. Interfaces & Types: Define clear contracts for your data structures. Generics: Write reusable code that works with multiple types.",
-                "Explore decorators, utility types, and module augmentation for even greater control and flexibility in your applications."
-            ]
+            content: `
+# Unlocking the Power of TypeScript
+
+TypeScript enhances JavaScript by adding static types, making code more predictable and maintainable, especially in large projects.
+
+## Why TypeScript?
+
+Static Typing: Catch errors during development, not at runtime.
+Interfaces & Types: Define clear contracts for your data structures.
+Generics: Write reusable code that works with multiple types.
+
+## Advanced Techniques
+
+Explore decorators, utility types, and module augmentation for even greater control and flexibility in your applications.
+            `
         });
 
         await createPost({
@@ -614,13 +618,19 @@ const seedData = async () => {
              authorId: user1.id, // Aayushi
              tags: ["sustainability", "eco-friendly", "minimalism", "green living"],
              imageUrl: `https://picsum.photos/seed/sustainable-living/1200/600`,
-             heading: "Embracing Sustainable Habits",
-             subheadings: ["Reduce, Reuse, Recycle", "Conscious Consumption"],
-             paragraphs: [
-                 "Living sustainably is crucial for our planet's future. It starts with small, conscious choices in our daily lives.",
-                 "Focus on minimizing waste through the 3 R's. Bring your own bags, bottles, and containers. Properly sort recyclables.",
-                 "Choose products with minimal packaging, buy secondhand when possible, and support eco-conscious brands. Consider reducing meat intake."
-             ]
+             content: `
+# Embracing Sustainable Habits
+
+Living sustainably is crucial for our planet's future. It starts with small, conscious choices in our daily lives.
+
+## Reduce, Reuse, Recycle
+
+Focus on minimizing waste through the 3 R's. Bring your own bags, bottles, and containers. Properly sort recyclables.
+
+## Conscious Consumption
+
+Choose products with minimal packaging, buy secondhand when possible, and support eco-conscious brands. Consider reducing meat intake.
+             `
          });
 
           await createPost({
@@ -629,13 +639,20 @@ const seedData = async () => {
               authorId: user2.id, // Alex G.
               tags: ["remote work", "productivity", "future of work", "collaboration", "work-life balance"],
               imageUrl: `https://picsum.photos/seed/remote-work-rise/1200/600`,
-              heading: "Navigating the Remote Work Era",
-              subheadings: ["Benefits & Drawbacks", "Essential Tools"],
-              paragraphs: [
-                   "The shift to remote work offers flexibility but also presents unique challenges in communication and team cohesion.",
-                   "Pros: Flexibility, no commute, wider talent pool. Cons: Isolation, blurred work-life boundaries, communication hurdles.",
-                   "Effective communication platforms (Slack, Teams), project management software (Asana, Jira), and video conferencing tools (Zoom, Google Meet) are vital."
-              ]
+              content: `
+# Navigating the Remote Work Era
+
+The shift to remote work offers flexibility but also presents unique challenges in communication and team cohesion.
+
+## Benefits & Drawbacks
+
+Pros: Flexibility, no commute, wider talent pool.
+Cons: Isolation, blurred work-life boundaries, communication hurdles.
+
+## Essential Tools
+
+Effective communication platforms (Slack, Teams), project management software (Asana, Jira), and video conferencing tools (Zoom, Google Meet) are vital.
+              `
           });
 
          await createPost({
@@ -644,12 +661,15 @@ const seedData = async () => {
            authorId: user1.id, // Aayushi
            tags: ["meditation", "mindfulness", "wellness", "mental health", "stress relief"],
            imageUrl: `https://picsum.photos/seed/mindfulness-guide/1200/600`,
-           heading: "Finding Calm Within: An Intro to Mindfulness",
-           subheadings: ["What is Mindfulness?", "Getting Started"],
-           paragraphs: [
-                "Mindfulness is the practice of paying attention to the present moment without judgment. It's a powerful tool for managing stress and enhancing self-awareness.",
-                "Find a quiet space, sit comfortably, close your eyes gently. Focus on the sensation of your breath entering and leaving your body. When your mind wanders (which it will!), gently guide your focus back to the breath. Start with 5 minutes daily."
-           ]
+           content: `
+# Finding Calm Within: An Intro to Mindfulness
+
+Mindfulness is the practice of paying attention to the present moment without judgment. It's a powerful tool for managing stress and enhancing self-awareness.
+
+## Getting Started
+
+Find a quiet space, sit comfortably, close your eyes gently. Focus on the sensation of your breath entering and leaving your body. When your mind wanders (which it will!), gently guide your focus back to the breath. Start with 5 minutes daily.
+           `
          });
 
           await createPost({
@@ -658,13 +678,22 @@ const seedData = async () => {
              authorId: user2.id, // Alex G.
              tags: ["travel", "backpacking", "southeast asia", "budget travel", "adventure", "asia"],
               imageUrl: `https://picsum.photos/seed/southeast-asia/1200/600`,
-              heading: "Backpacking Adventures in SEA",
-              subheadings: ["Top Destinations", "Budget Tips"],
-              paragraphs: [
-                   "Southeast Asia is a backpacker's paradise, offering diverse cultures, stunning landscapes, and delicious food at affordable prices.",
-                   "Thailand (Beaches, Temples), Vietnam (History, Scenery), Cambodia (Angkor Wat), Indonesia (Bali, Volcanoes).",
-                   "Stay in hostels, eat local street food, use budget airlines or buses for travel between countries."
-              ]
+              content: `
+# Backpacking Adventures in SEA
+
+Southeast Asia is a backpacker's paradise, offering diverse cultures, stunning landscapes, and delicious food at affordable prices.
+
+## Top Destinations
+
+*   Thailand (Beaches, Temples)
+*   Vietnam (History, Scenery)
+*   Cambodia (Angkor Wat)
+*   Indonesia (Bali, Volcanoes)
+
+## Budget Tips
+
+Stay in hostels, eat local street food, use budget airlines or buses for travel between countries.
+              `
           });
 
           await createPost({
@@ -673,13 +702,21 @@ const seedData = async () => {
              authorId: adminUser.id, // Vedansh
              tags: ["graphql", "rest", "api", "web development", "architecture"],
               imageUrl: `https://picsum.photos/seed/graphql-rest/1200/600`,
-              heading: "Choosing Your API Style: GraphQL vs REST",
-              subheadings: ["Key Differences", "When to Use Which"],
-              paragraphs: [
-                  "APIs are the backbone of modern applications. REST has been the standard, but GraphQL offers a different approach. Let's compare.",
-                  "Data Fetching: REST often requires multiple requests (over/under-fetching), GraphQL allows precise data fetching in one request. Endpoints: REST uses multiple URLs for different resources, GraphQL typically uses a single endpoint. Schema: GraphQL has a built-in schema and type system.",
-                  "Use GraphQL for complex data needs, mobile apps, or when frontend flexibility is key. REST is simpler for basic CRUD operations or when caching is critical."
-              ]
+              content: `
+# Choosing Your API Style: GraphQL vs REST
+
+APIs are the backbone of modern applications. REST has been the standard, but GraphQL offers a different approach. Let's compare.
+
+## Key Differences
+
+*   **Data Fetching:** REST often requires multiple requests (over/under-fetching), GraphQL allows precise data fetching in one request.
+*   **Endpoints:** REST uses multiple URLs for different resources, GraphQL typically uses a single endpoint.
+*   **Schema:** GraphQL has a built-in schema and type system.
+
+## When to Use Which
+
+Use GraphQL for complex data needs, mobile apps, or when frontend flexibility is key. REST is simpler for basic CRUD operations or when caching is critical.
+              `
           });
 
            await createPost({
@@ -688,13 +725,19 @@ const seedData = async () => {
              authorId: user1.id, // Aayushi
              tags: ["relationships", "communication", "love", "dating", "mental health", "connection"],
              imageUrl: `https://picsum.photos/seed/modern-love/1200/600`,
-             heading: "The Art of Communication in Love",
-             subheadings: ["Active Listening", "Expressing Needs"],
-             paragraphs: [
-                  "Strong relationships thrive on effective communication. Understanding and being understood is fundamental.",
-                  "Pay full attention when your partner speaks. Put away distractions, make eye contact, and reflect on what you hear to ensure understanding.",
-                  "Be clear and honest about your feelings and needs using 'I' statements (e.g., 'I feel...' instead of 'You always...'). Avoid blaming and focus on solutions."
-             ]
+             content: `
+# The Art of Communication in Love
+
+Strong relationships thrive on effective communication. Understanding and being understood is fundamental.
+
+## Active Listening
+
+Pay full attention when your partner speaks. Put away distractions, make eye contact, and reflect on what you hear to ensure understanding.
+
+## Expressing Needs
+
+Be clear and honest about your feelings and needs using 'I' statements (e.g., 'I feel...' instead of 'You always...'). Avoid blaming and focus on solutions.
+             `
            });
 
 
