@@ -1,6 +1,8 @@
 
 // src/types/blog.ts
 
+export type ReactionType = 'like' | 'love' | 'laugh' | 'frown' | 'angry';
+
 export interface Author {
     id: string;
     name: string;
@@ -36,8 +38,9 @@ export interface Post {
     commentCount: number;
     tags: string[]; // Ensure tags is always an array
     rating?: number; // Optional average rating
-    views?: number; // Optional view count
+    views: number; // Add view count - make it non-optional for simplicity or default to 0
     excerpt: string; // Ensure excerpt is always present
+    reactions: Record<ReactionType, number>; // Add reactions count
     // Keep structured fields potentially for rendering or backend processing, but 'content' is primary
     heading?: string; // Optional: Can be derived from content
     subheadings?: string[]; // Optional: Can be derived from content
@@ -45,6 +48,15 @@ export interface Post {
 }
 
 // RelatedPost type omits full content and some details for brevity in listings
-export interface RelatedPost extends Omit<Post, 'content' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs'> {
+export interface RelatedPost extends Omit<Post, 'content' | 'updatedAt' | 'author' | 'heading' | 'subheadings' | 'paragraphs' | 'reactions'> {
     author: Pick<Author, 'id' | 'name' | 'avatarUrl' | 'slug'>; // Only basic author info
 }
+
+// Type for storing individual reactions
+export interface UserReaction {
+    postId: string;
+    userId: string;
+    type: ReactionType;
+    timestamp: Date;
+}
+

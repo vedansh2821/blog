@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -28,6 +29,13 @@ const fetchPostsFromApi = async (page: number, limit: number = 6): Promise<{ pos
              ...post,
              publishedAt: new Date(post.publishedAt),
              updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+             // Ensure author has date object if present
+             author: {
+                ...post.author,
+                joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
+             },
+             views: post.views ?? 0, // Ensure views exists
+             reactions: post.reactions || {}, // Ensure reactions exists
          }));
 
 
@@ -78,7 +86,7 @@ export default function Home() {
     // Initial load
    useEffect(() => {
         // Prevent double load in React StrictMode
-        if (!isInitialMount.current) return;
+        if (!isInitialMount.current && process.env.NODE_ENV === 'development') return;
         isInitialMount.current = false;
 
      const initialLoad = async () => {

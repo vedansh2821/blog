@@ -1,3 +1,4 @@
+
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -5,7 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Calendar, MessageSquare, Share2, Facebook, Twitter, Linkedin, Award } from 'lucide-react'; // Added Award icon
+import { Calendar, MessageSquare, Share2, Facebook, Twitter, Linkedin, Award, Eye, ThumbsUp, Heart } from 'lucide-react'; // Added Eye, ThumbsUp, Heart
 import { format } from 'date-fns';
 import {
   DropdownMenu,
@@ -30,6 +31,9 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
 
    // Determine if the author is an admin to display the badge
    const isAdminAuthor = post.author?.role === 'admin';
+
+    // Calculate total reactions for display
+   const totalReactions = Object.values(post.reactions || {}).reduce((sum, count) => sum + count, 0);
 
   return (
     <Card className="group overflow-hidden shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full">
@@ -90,6 +94,18 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
              <MessageSquare className="h-3 w-3" />
              <span>{post.commentCount ?? 0}</span> {/* Use nullish coalescing for default */}
            </div>
+            {/* View Count */}
+           <div className="flex items-center gap-1">
+              <Eye className="h-3 w-3" />
+              <span>{post.views?.toLocaleString() ?? 0}</span>
+           </div>
+           {/* Reaction Count (Optional Simple Display) */}
+           {totalReactions > 0 && (
+                <div className="flex items-center gap-1">
+                   <Heart className="h-3 w-3 text-red-500/80" />
+                   <span>{totalReactions}</span>
+                </div>
+            )}
          </div>
       </CardContent>
       <CardFooter className="p-4 pt-0 flex justify-between items-center">
@@ -120,7 +136,8 @@ export default function BlogPostCard({ post }: BlogPostCardProps) {
 }
 
 // Helper function to check if a date is valid
-function isValid(date: Date) {
-  return date instanceof Date && !isNaN(date.getTime());
+function isValid(date: Date | string | undefined | null): date is Date {
+    if (!date) return false;
+    const d = new Date(date);
+    return d instanceof Date && !isNaN(d.getTime());
 }
-
