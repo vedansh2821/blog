@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useForm, Controller, type SubmitHandler } from 'react-hook-form'; // Added Controller
+import { useForm, Controller, type SubmitHandler, useWatch } from 'react-hook-form'; // Added useWatch
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
@@ -14,10 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { Loader2, PlusCircle } from 'lucide-react';
+import { Loader2, PlusCircle, Eye } from 'lucide-react'; // Added Eye icon
 import { useAuth } from '@/lib/auth/authContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils'; // Import cn
+import { Separator } from '@/components/ui/separator'; // Import Separator
 
 // Ensure categories match those used in mock-sql or fetched dynamically
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
@@ -28,10 +29,7 @@ const postFormSchema = z.object({
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
-    // Content validation: Check if the *string* value from the editor is not empty
-    // and optionally has a minimum length after stripping HTML tags for a rough estimate.
     content: z.string().refine((value) => {
-        // Basic check: remove tags and trim, then check length
         const textContent = value.replace(/<[^>]*>/g, '').trim();
         return textContent.length >= 50;
     }, {
@@ -50,8 +48,9 @@ export default function CreatePostPage() {
     const { currentUser, loading: authLoading } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
+    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); // State for image preview URL
 
-    const { register, handleSubmit, formState: { errors }, control, setValue, trigger } = useForm<PostFormInputs>({ // Added trigger
+    const { register, handleSubmit, formState: { errors }, control, setValue, trigger, watch } = useForm<PostFormInputs>({ // Added watch
         resolver: zodResolver(postFormSchema),
         defaultValues: {
             title: '',
@@ -63,6 +62,11 @@ export default function CreatePostPage() {
         },
     });
 
+    // Watch form values for the preview
+    const watchedContent = watch('content');
+    const watchedTitle = watch('title');
+    const watchedImageUrl = watch('imageUrl');
+
     // Effect for redirecting unauthorized users
     React.useEffect(() => {
         if (!authLoading && !currentUser) {
@@ -70,6 +74,26 @@ export default function CreatePostPage() {
             router.push('/login');
         }
     }, [authLoading, currentUser, router, toast]);
+
+    // Effect to update image preview when file or URL changes
+    useEffect(() => {
+        if (selectedImage) {
+            const objectUrl = URL.createObjectURL(selectedImage);
+            setImagePreviewUrl(objectUrl);
+            // Clean up the object URL when the component unmounts or the image changes
+            return () => URL.revokeObjectURL(objectUrl);
+        } else if (watchedImageUrl) {
+             // Very basic URL validation for preview
+             try {
+                new URL(watchedImageUrl);
+                setImagePreviewUrl(watchedImageUrl);
+             } catch (_) {
+                 setImagePreviewUrl(null); // Invalid URL
+             }
+        } else {
+            setImagePreviewUrl(null); // No image selected or URL provided
+        }
+    }, [selectedImage, watchedImageUrl]);
 
     // Function to handle form submission
     const onSubmit: SubmitHandler<PostFormInputs> = async (data) => {
@@ -115,7 +139,11 @@ export default function CreatePostPage() {
             console.log("[Create Post] API response:", result);
 
             if (!response.ok) {
-                throw new Error(result.error || 'Failed to create post');
+                const errorMsg = result.error || 'Failed to create post';
+                console.error(`[Create Post] API Error: ${response.status} - ${errorMsg}`);
+                 // Log request payload on error for debugging
+                console.error("[Create Post] Failed Request Payload:", postData);
+                throw new Error(errorMsg);
             }
 
             toast({
@@ -154,7 +182,7 @@ export default function CreatePostPage() {
     if (authLoading || currentUser === undefined) {
         return (
             <div className="container mx-auto py-12">
-                <Card className="max-w-3xl mx-auto">
+                <Card className="max-w-4xl mx-auto"> {/* Increased max-width */}
                     <CardHeader>
                         <Skeleton className="h-8 w-1/2 mb-2" />
                         <Skeleton className="h-4 w-3/4" />
@@ -270,17 +298,20 @@ export default function CreatePostPage() {
                                        {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image</Button> */}
                                 </div>
                              </div>
-                             {/* Image Preview */}
+                             {/* Image Preview (using state variable) */}
                               <div className="mt-4">
                                  <p className="text-sm font-medium mb-2">Image Preview:</p>
-                                 {selectedImage ? (
+                                 {imagePreviewUrl ? (
                                      <img
-                                         src={URL.createObjectURL(selectedImage)}
+                                         src={imagePreviewUrl}
                                          alt="Selected preview"
-                                         className="max-h-40 rounded-md shadow-sm object-cover border"
+                                         className="max-h-40 w-auto rounded-md shadow-sm object-contain border"
+                                         onError={() => setImagePreviewUrl(null)} // Clear preview if URL is broken
                                      />
                                   ) : (
-                                      <Skeleton className="h-40 w-full max-w-xs rounded-md" />
+                                      <div className="h-40 w-full max-w-xs rounded-md bg-muted flex items-center justify-center text-muted-foreground">
+                                          No Image Preview
+                                      </div>
                                   )}
                              </div>
                          </div>
@@ -293,8 +324,41 @@ export default function CreatePostPage() {
                             {errors.tags && <p className="text-xs text-destructive mt-1">{errors.tags.message}</p>}
                         </div>
 
+                        <Separator className="my-8" />
+
+                        {/* Live Preview Section */}
+                        <div>
+                            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                <Eye className="h-5 w-5 text-muted-foreground" /> Live Preview
+                            </h3>
+                            <Card className="bg-muted/30 p-4 min-h-[200px]">
+                                <CardContent className="p-0">
+                                    {watchedImageUrl && (
+                                        <div className="relative w-full h-48 mb-4 rounded overflow-hidden">
+                                             <img
+                                                 src={watchedImageUrl}
+                                                 alt="Preview"
+                                                 className="absolute inset-0 w-full h-full object-cover"
+                                                 onError={(e) => e.currentTarget.style.display='none'} // Hide if broken
+                                             />
+                                        </div>
+                                    )}
+                                    {watchedTitle && <h1 className="text-2xl font-bold mb-4">{watchedTitle}</h1>}
+                                    {watchedContent ? (
+                                        <div
+                                            className="prose prose-sm dark:prose-invert max-w-none"
+                                            dangerouslySetInnerHTML={{ __html: watchedContent }}
+                                        />
+                                    ) : (
+                                        <p className="text-muted-foreground italic">Content preview will appear here...</p>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+
+
                         {/* Submit Button */}
-                        <div className="flex justify-end pt-4 border-t">
+                        <div className="flex justify-end pt-4 border-t mt-8">
                             <Button type="submit" disabled={isSubmitting} size="lg">
                                 {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                                 {isSubmitting ? 'Publishing...' : 'Publish Post'}
@@ -306,3 +370,4 @@ export default function CreatePostPage() {
         </div>
     );
 }
+```
