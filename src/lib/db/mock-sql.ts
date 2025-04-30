@@ -3,7 +3,7 @@
 // DO NOT USE THIS IN PRODUCTION. Replace with a real database and ORM (like Prisma).
 
 import type { AuthUser } from '@/lib/auth/authContext';
-import type { Post, Author } from '@/types/blog'; // Assuming types exist
+import type { Post, Author, ReactionType, UserReaction } from '@/types/blog'; // Assuming types exist
 import bcrypt from 'bcrypt';
 
 // Extend MockUser to include photoURL potentially being null
@@ -20,6 +20,7 @@ interface MockUser extends Omit<AuthUser, 'photoURL'> {
 // --- In-Memory Stores ---
 const users: MockUser[] = [];
 const posts: Post[] = [];
+const reactions: UserReaction[] = []; // Store individual reactions
 let postIdCounter = 1;
 let userIdCounter = 1;
 let isSeeded = false;
@@ -41,7 +42,7 @@ export const findUserByEmail = async (email: string): Promise<MockUser | null> =
 export const findUserById = async (id: string): Promise<MockUser | null> => {
     console.log(`[Mock DB findUserById] Finding user by ID: "${id}"`);
     const availableUserIds = users.map(u => u.id);
-    console.log(`[Mock DB findUserById] Available user IDs: [${availableUserIds.join(', ')}]`);
+    // console.log(`[Mock DB findUserById] Available user IDs: [${availableUserIds.join(', ')}]`); // Reduce noise
     const user = users.find(u => u.id === id);
     if (user) {
         console.log(`[Mock DB findUserById] User found for ID "${id}".`);
@@ -174,6 +175,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
             avatarUrl: `https://i.pravatar.cc/40?u=unknown`,
             bio: 'Author information not available.',
             joinedAt: new Date(0),
+            role: 'user', // Default role
         };
     }
     return {
@@ -183,7 +185,7 @@ const createAuthorObject = (user: MockUser | null): Author => {
         avatarUrl: user.photoURL || `https://i.pravatar.cc/40?u=${user.id}`,
         bio: `Posts by ${user.name || user.email}`,
         joinedAt: new Date(user.joinedAt),
-        role: user.role,
+        role: user.role, // Include the role
     };
 };
 
@@ -274,11 +276,12 @@ export const createPost = async (
         publishedAt: now,
         updatedAt: now,
         commentCount: 0,
-        views: Math.floor(Math.random() * 100),
+        views: 0, // Initialize views to 0
         excerpt: postData.excerpt || autoExcerpt,
         tags: postData.tags || [],
-        rating: parseFloat((Math.random() * 1 + 3.5).toFixed(1)),
-        ratingCount: Math.floor(Math.random() * 10) + 1,
+        rating: 0, // Initialize rating
+        ratingCount: 0, // Initialize rating count
+        reactions: { like: 0, love: 0, laugh: 0, frown: 0, angry: 0 }, // Initialize reactions
         heading: extractedHeading,
         subheadings: [],
         paragraphs: [],
@@ -293,7 +296,10 @@ export const createPost = async (
         console.error(`[Mock DB createPost] CRITICAL: Failed to retrieve post with slug ${newPost.slug} after adding!`);
         throw new Error("Failed to save post in mock database.");
     }
-    return { ...addedPost, publishedAt: new Date(addedPost.publishedAt), updatedAt: new Date(addedPost.updatedAt) };
+     // Recalculate reaction counts after adding (should be 0 initially)
+     recalculateReactionCounts(addedPost.id);
+     const finalAddedPost = posts.find(p => p.id === addedPost.id)!; // Refetch to get counts
+     return { ...finalAddedPost, publishedAt: new Date(finalAddedPost.publishedAt), updatedAt: new Date(finalAddedPost.updatedAt) };
 };
 
 
@@ -304,7 +310,7 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
         return null;
     }
     console.log(`[Mock DB findPostBySlug] Searching for post with slug (case-insensitive): "${trimmedSlug}"`);
-    console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug).join(', ')}`);
+    // console.log(`[Mock DB findPostBySlug] Available slugs: ${posts.map(p => p.slug).join(', ')}`); // Reduce noise
 
     const post = posts.find(p => p.slug.trim().toLowerCase() === trimmedSlug);
 
@@ -315,20 +321,17 @@ export const findPostBySlug = async (slug: string): Promise<Post | null> => {
 
     console.log(`[Mock DB findPostBySlug] Found post: ID ${post.id}, Title: "${post.title}"`);
 
+    // Simulate fetching author details
     const author = await findUserById(post.author.id);
-    if (!author) {
-        console.warn(`[Mock DB findPostBySlug] Author with ID ${post.author.id} not found for post ${post.id}. Returning post with unknown author.`);
-        return {
-            ...post,
-            author: createAuthorObject(null),
-            publishedAt: new Date(post.publishedAt),
-            updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
-        };
-    }
+    const authorDetails = createAuthorObject(author); // Use createAuthorObject for consistent author structure
+
+     // Ensure reactions are calculated/fetched correctly
+     const reactionCounts = getReactionCounts(post.id);
 
     return {
         ...post,
-        author: createAuthorObject(author),
+        author: authorDetails,
+        reactions: reactionCounts, // Add calculated reaction counts
         publishedAt: new Date(post.publishedAt),
         updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
     };
@@ -373,13 +376,16 @@ export const findPosts = async (options: {
     const postsForPage = filtered.slice(startIndex, endIndex);
     const hasMore = endIndex < totalResults;
 
+    // Fetch author details and calculate reactions for each post on the page
     const postsWithDetails = await Promise.all(postsForPage.map(async (post) => {
         const author = await findUserById(post.author.id);
+        const reactionCounts = getReactionCounts(post.id); // Get reactions for this post
         return {
             ...post,
+            author: createAuthorObject(author),
+            reactions: reactionCounts, // Include reactions
             publishedAt: new Date(post.publishedAt),
             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
-            author: createAuthorObject(author)
         };
     }));
 
@@ -396,7 +402,7 @@ export const findPosts = async (options: {
 
 export const updatePost = async (
     slug: string,
-    updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt'>> & { requestingUserId: string }
+    updateData: Partial<Omit<Post, 'id' | 'slug' | 'author' | 'publishedAt' | 'commentCount' | 'views' | 'rating' | 'ratingCount' | 'updatedAt' | 'reactions'>> & { requestingUserId: string }
 ): Promise<Post | null> => {
     const lowerCaseSlug = slug?.trim().toLowerCase();
      if (!lowerCaseSlug) {
@@ -456,6 +462,15 @@ export const updatePost = async (
         excerpt: updatedExcerpt,
         heading: updatedHeading,
         updatedAt: new Date(),
+        // Keep fields not directly updatable (views, reactions, etc.)
+        views: originalPost.views,
+        reactions: originalPost.reactions,
+        rating: originalPost.rating,
+        ratingCount: originalPost.ratingCount,
+        commentCount: originalPost.commentCount,
+        // Preserve author and publishedAt
+        author: originalPost.author,
+        publishedAt: originalPost.publishedAt,
         subheadings: originalPost.subheadings,
         paragraphs: originalPost.paragraphs,
     };
@@ -463,6 +478,7 @@ export const updatePost = async (
     posts[postIndex] = updatedPost;
     console.log(`[Mock DB updatePost] Post "${updatedPost.title}" (ID: ${updatedPost.id}) updated successfully.`);
 
+    // Fetch author details for the response
     const author = await findUserById(updatedPost.author.id);
     return {
         ...updatedPost,
@@ -500,11 +516,112 @@ export const deletePost = async (slug: string, requestingUserId: string): Promis
     }
 
     const deletedTitle = posts[postIndex].title;
+    const postIdToDelete = posts[postIndex].id; // Get ID before splicing
+
     posts.splice(postIndex, 1);
+
+    // Also remove reactions associated with the deleted post
+    const initialReactionCount = reactions.length;
+    const reactionsToDelete = reactions.filter(r => r.postId === postIdToDelete);
+    reactionsToDelete.forEach(reaction => {
+        const index = reactions.findIndex(r => r.postId === reaction.postId && r.userId === reaction.userId);
+        if (index > -1) reactions.splice(index, 1);
+    });
+    console.log(`[Mock DB deletePost] Removed ${initialReactionCount - reactions.length} reactions for deleted post ID ${postIdToDelete}.`);
+
     console.log(`[Mock DB deletePost] Post deleted: "${deletedTitle}" (Slug: ${slug}). Remaining posts: ${posts.length}`);
     return true;
 };
 
+
+// --- View Count Function ---
+
+export const updatePostViews = async (postId: string): Promise<number | null> => {
+    if (!postId) return null;
+    const postIndex = posts.findIndex(p => p.id === postId);
+    if (postIndex === -1) {
+        console.warn(`[Mock DB updatePostViews] Post not found: ${postId}`);
+        return null;
+    }
+
+    posts[postIndex].views = (posts[postIndex].views || 0) + 1;
+    console.log(`[Mock DB updatePostViews] Incremented views for post ${postId} to ${posts[postIndex].views}`);
+    return posts[postIndex].views;
+};
+
+// --- Reaction Functions ---
+
+// Helper to recalculate reaction counts for a post and update the post object
+const recalculateReactionCounts = (postId: string) => {
+    const postIndex = posts.findIndex(p => p.id === postId);
+    if (postIndex === -1) return;
+
+    const postReactions = reactions.filter(r => r.postId === postId);
+    const newCounts: Record<ReactionType, number> = { like: 0, love: 0, laugh: 0, frown: 0, angry: 0 };
+
+    postReactions.forEach(reaction => {
+        newCounts[reaction.type]++;
+    });
+
+    posts[postIndex].reactions = newCounts;
+    // console.log(`[Mock DB] Recalculated reactions for post ${postId}:`, newCounts); // Reduce noise
+};
+
+// Get aggregated reaction counts for a post
+export const getReactionCounts = (postId: string): Record<ReactionType, number> => {
+    const post = posts.find(p => p.id === postId);
+    return post?.reactions || { like: 0, love: 0, laugh: 0, frown: 0, angry: 0 };
+};
+
+// Add or update a user's reaction to a post
+export const addReaction = async (postId: string, userId: string, type: ReactionType | null): Promise<void> => {
+    const postIndex = posts.findIndex(p => p.id === postId);
+    if (postIndex === -1) {
+        console.warn(`[Mock DB addReaction] Post not found: ${postId}`);
+        return;
+    }
+
+    // Find existing reaction by this user for this post
+    const existingReactionIndex = reactions.findIndex(r => r.postId === postId && r.userId === userId);
+
+    if (existingReactionIndex > -1) {
+        // User is changing or removing their reaction
+        if (type === null || reactions[existingReactionIndex].type === type) {
+             // Remove reaction
+             reactions.splice(existingReactionIndex, 1);
+             console.log(`[Mock DB addReaction] Removed reaction for post ${postId} by user ${userId}`);
+        } else {
+            // Update reaction type
+             reactions[existingReactionIndex].type = type;
+             reactions[existingReactionIndex].timestamp = new Date();
+             console.log(`[Mock DB addReaction] Updated reaction to '${type}' for post ${postId} by user ${userId}`);
+        }
+    } else if (type !== null) {
+        // Add new reaction
+        const newReaction: UserReaction = {
+            postId,
+            userId,
+            type,
+            timestamp: new Date(),
+        };
+        reactions.push(newReaction);
+        console.log(`[Mock DB addReaction] Added new reaction '${type}' for post ${postId} by user ${userId}`);
+    }
+
+    // Recalculate and update the counts on the post object
+    recalculateReactionCounts(postId);
+};
+
+// Get all reactions and the current user's reaction for a post
+export const getReactions = async (postId: string, userId?: string): Promise<{ counts: Record<ReactionType, number>, userReaction: ReactionType | null }> => {
+    const counts = getReactionCounts(postId);
+    let userReaction: ReactionType | null = null;
+    if (userId) {
+        const reaction = reactions.find(r => r.postId === postId && r.userId === userId);
+        userReaction = reaction?.type || null;
+    }
+    return { counts, userReaction };
+};
 
 // --- Seed Data ---
 const seedData = async () => {
@@ -515,6 +632,7 @@ const seedData = async () => {
 
      users.length = 0;
      posts.length = 0;
+     reactions.length = 0; // Clear reactions on seed
      userIdCounter = 1;
      postIdCounter = 1;
      console.log("[Mock DB] Cleared existing data. Seeding...");
@@ -565,7 +683,8 @@ const seedData = async () => {
        });
         console.log(`[Mock DB Seed] User: ${user2.email}, Pass: ${alexPassword}`);
 
-        await createPost({
+        // --- Create Posts ---
+        const post1 = await createPost({
             title: "Mastering TypeScript for Modern Web Development",
             category: "Technology",
             authorId: adminUser.id,
@@ -574,7 +693,7 @@ const seedData = async () => {
             content: `<h1>Unlocking the Power of TypeScript</h1><p>TypeScript enhances JavaScript by adding static types, making code more predictable and maintainable, especially in large projects.</p><h2>Why TypeScript?</h2><ul><li>Static Typing: Catch errors during development, not at runtime.</li><li>Interfaces & Types: Define clear contracts for your data structures.</li><li>Generics: Write reusable code that works with multiple types.</li></ul><h2>Advanced Techniques</h2><p>Explore decorators, utility types, and module augmentation for even greater control and flexibility in your applications.</p>`
         });
 
-        await createPost({
+        const post2 = await createPost({
              title: "Sustainable Living: Simple Steps for a Greener Life",
              category: "Lifestyle",
              authorId: user1.id,
@@ -583,7 +702,7 @@ const seedData = async () => {
              content: `<h1>Embracing Sustainable Habits</h1><p>Living sustainably is crucial for our planet's future. It starts with small, conscious choices in our daily lives.</p><h2>Reduce, Reuse, Recycle</h2><p>Focus on minimizing waste through the 3 R's. Bring your own bags, bottles, and containers. Properly sort recyclables.</p><h2>Conscious Consumption</h2><p>Choose products with minimal packaging, buy secondhand when possible, and support eco-conscious brands. Consider reducing meat intake.</p>`
          });
 
-          await createPost({
+          const post3 = await createPost({
               title: "The Rise of Remote Work: Challenges and Opportunities",
               category: "Technology",
               authorId: user2.id,
@@ -592,7 +711,7 @@ const seedData = async () => {
               content: `<h1>Navigating the Remote Work Era</h1><p>The shift to remote work offers flexibility but also presents unique challenges in communication and team cohesion.</p><h2>Benefits & Drawbacks</h2><p><strong>Pros:</strong> Flexibility, no commute, wider talent pool.<br><strong>Cons:</strong> Isolation, blurred work-life boundaries, communication hurdles.</p><h2>Essential Tools</h2><p>Effective communication platforms (Slack, Teams), project management software (Asana, Jira), and video conferencing tools (Zoom, Google Meet) are vital.</p>`
           });
 
-         await createPost({
+         const post4 = await createPost({
            title: "Mindfulness Meditation: A Beginner's Guide",
            category: "Health",
            authorId: user1.id,
@@ -601,7 +720,7 @@ const seedData = async () => {
            content: `<h1>Finding Calm Within: An Intro to Mindfulness</h1><p>Mindfulness is the practice of paying attention to the present moment without judgment. It's a powerful tool for managing stress and enhancing self-awareness.</p><h2>Getting Started</h2><p>Find a quiet space, sit comfortably, close your eyes gently. Focus on the sensation of your breath entering and leaving your body. When your mind wanders (which it will!), gently guide your focus back to the breath. Start with 5 minutes daily.</p>`
          });
 
-          await createPost({
+          const post5 = await createPost({
              title: "Exploring Southeast Asia: A Backpacker's Dream",
              category: "Travel",
              authorId: user2.id,
@@ -610,7 +729,7 @@ const seedData = async () => {
               content: `<h1>Backpacking Adventures in SEA</h1><p>Southeast Asia is a backpacker's paradise, offering diverse cultures, stunning landscapes, and delicious food at affordable prices.</p><h2>Top Destinations</h2><ul><li>Thailand (Beaches, Temples)</li><li>Vietnam (History, Scenery)</li><li>Cambodia (Angkor Wat)</li><li>Indonesia (Bali, Volcanoes)</li></ul><h2>Budget Tips</h2><p>Stay in hostels, eat local street food, use budget airlines or buses for travel between countries.</p>`
           });
 
-          await createPost({
+          const post6 = await createPost({
              title: "Introduction to GraphQL vs REST APIs",
              category: "Technology",
              authorId: adminUser.id,
@@ -619,7 +738,7 @@ const seedData = async () => {
               content: `<h1>Choosing Your API Style: GraphQL vs REST</h1><p>APIs are the backbone of modern applications. REST has been the standard, but GraphQL offers a different approach. Let's compare.</p><h2>Key Differences</h2><ul><li><strong>Data Fetching:</strong> REST often requires multiple requests (over/under-fetching), GraphQL allows precise data fetching in one request.</li><li><strong>Endpoints:</strong> REST uses multiple URLs for different resources, GraphQL typically uses a single endpoint.</li><li><strong>Schema:</strong> GraphQL has a built-in schema and type system.</li></ul><h2>When to Use Which</h2><p>Use GraphQL for complex data needs, mobile apps, or when frontend flexibility is key. REST is simpler for basic CRUD operations or when caching is critical.</p>`
           });
 
-           await createPost({
+           const post7 = await createPost({
              title: "Navigating Modern Relationships: Communication is Key",
              category: "Love",
              authorId: user1.id,
@@ -628,6 +747,14 @@ const seedData = async () => {
              content: `<h1>The Art of Communication in Love</h1><p>Strong relationships thrive on effective communication. Understanding and being understood is fundamental.</p><h2>Active Listening</h2><p>Pay full attention when your partner speaks. Put away distractions, make eye contact, and reflect on what you hear to ensure understanding.</p><h2>Expressing Needs</h2><p>Be clear and honest about your feelings and needs using 'I' statements (e.g., 'I feel...' instead of 'You always...'). Avoid blaming and focus on solutions.</p>`
            });
 
+        // --- Seed Reactions ---
+        await addReaction(post1.id, user1.id, 'like');
+        await addReaction(post1.id, user2.id, 'love');
+        await addReaction(post2.id, adminUser.id, 'like');
+        await addReaction(post2.id, user2.id, 'laugh');
+        await addReaction(post4.id, adminUser.id, 'love');
+        await addReaction(post7.id, user2.id, 'like');
+        await addReaction(post7.id, adminUser.id, 'love');
 
         console.log("[Mock DB Seed] Seed data creation finished.");
         isSeeded = true;
@@ -638,6 +765,12 @@ const seedData = async () => {
       }
  };
 
- if (!isSeeded) {
+ // Ensure seed data runs only once on server start (or module load)
+ if (typeof window === 'undefined' && !isSeeded) { // Check if running on server and not seeded
      seedData();
+ } else if (typeof window !== 'undefined' && !isSeeded) {
+     // Handle client-side seeding if necessary, though usually done server-side
+     // seedData(); // Could cause issues if run multiple times
+     console.log("[Mock DB] Seeding skipped on client-side.");
  }
+

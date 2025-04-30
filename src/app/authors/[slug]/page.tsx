@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -51,6 +52,8 @@ const fetchAuthorPageData = async (authorId: string): Promise<AuthorPageData | n
                 ...post.author,
                 joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
             },
+             views: post.views ?? 0, // Ensure views exists
+             reactions: post.reactions || {}, // Ensure reactions exists
         }));
 
 

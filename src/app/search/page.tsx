@@ -6,47 +6,59 @@ import { useSearchParams } from 'next/navigation';
 import BlogPostCard from '@/components/blog-post-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search } from 'lucide-react';
+import type { Post } from '@/types/blog'; // Import Post type
 
-// Mock data fetching function (adapt to use the query parameter)
-const fetchSearchResults = async (query: string, page: number = 0, limit: number = 9) => {
-    // In a real app, fetch from `/api/posts?q=${query}&page=${page}&limit=${limit}`
-    console.log(`Fetching search results for query: "${query}", page: ${page}`);
-    await new Promise(resolve => setTimeout(resolve, 600)); // Simulate API delay
+// API fetching function for search results
+const fetchSearchResultsFromApi = async (
+    query: string,
+    page: number = 0,
+    limit: number = 9
+): Promise<{ posts: Post[], hasMore: boolean, totalResults: number }> => {
+    const params = new URLSearchParams({
+        q: query,
+        page: page.toString(),
+        limit: limit.toString(),
+    });
 
-    const allPosts = Array.from({ length: 50 }).map((_, index) => ({ // Generate mock posts
-        id: `post-${index}`,
-        title: `Blog Post Title ${index + 1}`,
-        slug: `blog-post-title-${index + 1}`,
-        excerpt: `This is a short description for blog post ${index + 1}.`,
-        imageUrl: `https://picsum.photos/seed/${index + 1}/600/400`,
-        category: ['Technology', 'Lifestyle', 'Health', 'Travel'][index % 4],
-        author: {
-            name: ['Alice', 'Bob', 'Charlie'][index % 3],
-            avatarUrl: `https://i.pravatar.cc/40?u=author${index % 3}`,
-        },
-        publishedAt: new Date(Date.now() - index * 24 * 60 * 60 * 1000),
-        commentCount: Math.floor(Math.random() * 50),
-    }));
+    console.log(`[SearchPage] Fetching search results from API: /api/posts?${params.toString()}`);
+    try {
+        const response = await fetch(`/api/posts?${params.toString()}`);
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`API Error: ${response.status} ${response.statusText}. Details: ${errorData}`);
+        }
+        const data = await response.json();
+        console.log("[SearchPage] API Response:", data);
 
-    // Simple mock filtering (case-insensitive title/excerpt match)
-    const filteredPosts = allPosts.filter(post =>
-        post.title.toLowerCase().includes(query.toLowerCase()) ||
-        post.excerpt.toLowerCase().includes(query.toLowerCase())
-    );
+        // Ensure posts array exists and convert date strings, include views
+        const posts = (data.posts || []).map((post: any) => ({
+             ...post,
+             publishedAt: new Date(post.publishedAt),
+             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
+             author: {
+                 ...post.author,
+                 joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
+             },
+             views: post.views ?? 0, // Ensure views exists
+             reactions: post.reactions || {}, // Ensure reactions exists
+         }));
 
-    const totalResults = filteredPosts.length;
-    const startIndex = page * limit;
-    const endIndex = startIndex + limit;
-    const posts = filteredPosts.slice(startIndex, endIndex);
-    const hasMore = endIndex < totalResults;
-
-    return { posts, hasMore, totalResults };
+        return {
+            posts,
+            hasMore: data.hasMore ?? false,
+            totalResults: data.totalResults ?? 0,
+        };
+    } catch (error) {
+        console.error("[SearchPage] Error fetching search results:", error);
+        throw error; // Re-throw to be caught by the caller
+    }
 };
+
 
 function SearchResults() {
   const searchParams = useSearchParams();
   const query = searchParams.get('q') || '';
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<Post[]>([]); // Use Post type
   const [loading, setLoading] = useState(true);
   const [totalResults, setTotalResults] = useState(0);
   // Add state for pagination/infinite scroll if needed later
@@ -54,7 +66,7 @@ function SearchResults() {
   useEffect(() => {
     if (query) {
       setLoading(true);
-      fetchSearchResults(query)
+      fetchSearchResultsFromApi(query) // Use the API fetching function
         .then(data => {
           setResults(data.posts);
           setTotalResults(data.totalResults);

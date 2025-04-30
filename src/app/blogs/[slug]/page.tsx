@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, Share2, Facebook, Twitter, Linkedin, Eye, Edit, Trash2, Loader2 } from 'lucide-react'; // Added Edit, Trash2, Loader2 icons
+import { Calendar, User, MessageSquare, Send, CornerUpLeft, Star, ThumbsUp, Share2, Facebook, Twitter, Linkedin, Eye, Edit, Trash2, Loader2, Heart, ThumbsDown, Smile, Frown, Angry, Laugh, HandHeart } from 'lucide-react'; // Added more reaction icons
 import { format, isValid } from 'date-fns'; // Import isValid
 import BlogPostCard from '@/components/blog-post-card'; // Re-use for related posts
 import {
@@ -22,6 +22,7 @@ import {
    DropdownMenuContent,
    DropdownMenuItem,
    DropdownMenuTrigger,
+   DropdownMenuSeparator,
  } from "@/components/ui/dropdown-menu";
 import {
     AlertDialog,
@@ -37,8 +38,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Label } from '@/components/ui/label'; // Correct import for Label
 import { useAuth } from '@/lib/auth/authContext'; // Import useAuth
-import type { Author, Comment, Post, RelatedPost } from '@/types/blog'; // Import types
-
+import type { Author, Comment, Post, RelatedPost, ReactionType } from '@/types/blog'; // Import types
+import { updatePostViews, addReaction, getReactions } from '@/lib/db/mock-sql'; // Import DB functions
 
 // Helper function to fetch post details from the API
 const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
@@ -83,7 +84,7 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            } : createAuthorObject(null), // Add default author if missing
            // Ensure other optional fields have defaults if needed by UI
            commentCount: data.commentCount ?? 0,
-           views: data.views ?? 0,
+           views: data.views ?? 0, // Default views to 0
            rating: data.rating ?? 0,
            ratingCount: data.ratingCount ?? 0,
            // Use content directly, ensure it's a string
@@ -91,6 +92,7 @@ const fetchPostDetailsFromApi = async (slug: string): Promise<Post | null> => {
            excerpt: data.excerpt || '', // Ensure excerpt is present
            imageUrl: data.imageUrl || `https://picsum.photos/seed/${data.id || 'default'}/1200/600`, // Default image
            tags: data.tags || [], // Ensure tags is an array
+           reactions: data.reactions || {}, // Initialize reactions
            // Keep optional structured fields if they exist in the response
            heading: data.heading,
            subheadings: data.subheadings || [],
@@ -203,6 +205,7 @@ const fetchRelatedPostsFromApi = async (category: string, currentPostId: string)
              imageUrl: post.imageUrl || `https://picsum.photos/seed/${post.id}/600/400`,
              category: post.category || 'Uncategorized',
              tags: post.tags || [], // Ensure tags is an array
+             views: post.views ?? 0, // Include views
              // Content is the primary source now
              content: post.content || '',
         }));
@@ -245,8 +248,16 @@ const PostSkeleton: React.FC = () => (
        <Skeleton className="h-6 w-24 rounded-full" />
        <Skeleton className="h-6 w-16 rounded-full" />
      </div>
+      {/* Reaction Buttons Skeleton */}
+     <div className="mt-8 pt-4 border-t flex items-center justify-center gap-2">
+       <Skeleton className="h-8 w-8 rounded-full" />
+       <Skeleton className="h-8 w-8 rounded-full" />
+       <Skeleton className="h-8 w-8 rounded-full" />
+       <Skeleton className="h-8 w-8 rounded-full" />
+       <Skeleton className="h-8 w-8 rounded-full" />
+     </div>
      {/* Rating Bar Skeleton */}
-     <div className="mt-8 py-4 border-t border-b flex flex-col sm:flex-row items-center justify-center gap-4">
+     <div className="mt-4 py-4 border-t border-b flex flex-col sm:flex-row items-center justify-center gap-4">
          <Skeleton className="h-5 w-24" />
          <div className="flex gap-1">
              <Skeleton className="h-8 w-8" />
@@ -465,6 +476,33 @@ const CommentItem: React.FC<{ comment: Comment, postId: string, onReply: (commen
   );
 };
 
+
+// --- Reaction Component ---
+const ReactionButton: React.FC<{ type: ReactionType; count: number; onClick: () => void; hasReacted?: boolean }> = ({ type, count, onClick, hasReacted }) => {
+   const getIcon = () => {
+       switch (type) {
+           case 'like': return <ThumbsUp className="h-4 w-4" />;
+           case 'love': return <Heart className="h-4 w-4" />;
+           case 'laugh': return <Laugh className="h-4 w-4" />;
+           case 'frown': return <Frown className="h-4 w-4" />;
+           case 'angry': return <Angry className="h-4 w-4" />;
+           default: return <Smile className="h-4 w-4" />;
+       }
+   };
+   return (
+       <Button
+           variant={hasReacted ? "secondary" : "ghost"}
+           size="sm"
+           onClick={onClick}
+           className="flex items-center gap-1 h-8 px-2"
+           aria-pressed={hasReacted}
+       >
+           {getIcon()}
+           <span className="text-xs">{count > 0 ? count : ''}</span>
+       </Button>
+   );
+};
+
 // --- Main Page Component ---
 
 export default function BlogPostPage() {
@@ -477,6 +515,9 @@ export default function BlogPostPage() {
   const [loading, setLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
+  const [reactions, setReactions] = useState<Record<ReactionType, number>>({ like: 0, love: 0, laugh: 0, frown: 0, angry: 0 });
+  const [userReaction, setUserReaction] = useState<ReactionType | null>(null);
+  const [viewCount, setViewCount] = useState<number | null>(null);
   const { toast } = useToast();
   const { currentUser } = useAuth(); // Get current user from context
 
@@ -497,6 +538,9 @@ export default function BlogPostPage() {
       setPost(undefined);
       setComments([]);
       setRelatedPosts([]);
+      setReactions({ like: 0, love: 0, laugh: 0, frown: 0, angry: 0 }); // Reset reactions
+      setUserReaction(null); // Reset user reaction
+      setViewCount(null); // Reset view count
 
       try {
         // Fetch post details first
@@ -507,6 +551,29 @@ export default function BlogPostPage() {
         if (postData) {
            console.log("[BlogPostPage] Post data fetched:", postData);
            setPost(postData);
+           setViewCount(postData.views ?? 0); // Set initial view count
+
+           // Increment view count (non-blocking)
+           updatePostViews(postData.id).then(updatedViews => {
+                if(isMounted && updatedViews !== null) {
+                    console.log(`[BlogPostPage] Views updated to ${updatedViews} for post ${postData.id}`);
+                    setViewCount(updatedViews); // Update view count in state
+                     // Update post object state as well if needed, careful not to trigger excessive re-renders
+                     setPost(prev => prev ? {...prev, views: updatedViews} : null);
+                }
+           }).catch(err => console.error("[BlogPostPage] Failed to update views:", err));
+
+            // Fetch initial reactions
+           getReactions(postData.id).then(reactionData => {
+               if (isMounted) {
+                   setReactions(reactionData.counts);
+                   // Check if current user reacted
+                   if (currentUser && reactionData.userReaction) {
+                       setUserReaction(reactionData.userReaction);
+                   }
+               }
+           }).catch(err => console.error("[BlogPostPage] Failed to fetch reactions:", err));
+
 
            // Fetch comments and related posts in parallel only if post exists
            if (postData.id && postData.category) { // Ensure ID and category are present
@@ -560,7 +627,7 @@ export default function BlogPostPage() {
         isMounted = false;
         console.log(`[BlogPostPage] Unmounting or slug changed for: ${slug}`);
     };
-  }, [slug, toast, router]); // Re-run effect when slug changes
+  }, [slug, toast, router, currentUser]); // Re-run effect when slug or currentUser changes
 
 
   const handleCommentSubmit = (newComment: Comment) => {
@@ -615,6 +682,48 @@ export default function BlogPostPage() {
              return {...prevPost, rating: parseFloat(newAvgRating.toFixed(1)), ratingCount: newRatingCount }
           });
     };
+
+     // --- Reaction Handler ---
+     const handleReaction = async (reactionType: ReactionType) => {
+         if (!post || !currentUser) {
+             toast({ title: "Login Required", description: "Please log in to react.", variant: "destructive" });
+             return;
+         }
+
+         const previousReaction = userReaction;
+         const newReaction = previousReaction === reactionType ? null : reactionType;
+
+         // Optimistic UI update
+         setReactions(prev => {
+             const newCounts = { ...prev };
+             if (previousReaction) newCounts[previousReaction] = Math.max(0, newCounts[previousReaction] - 1);
+             if (newReaction) newCounts[newReaction]++;
+             return newCounts;
+         });
+         setUserReaction(newReaction);
+
+         // API call
+         try {
+             await addReaction(post.id, currentUser.id, newReaction);
+             console.log(`[BlogPostPage] Reaction ${newReaction ? `added: ${newReaction}` : 'removed'} for post ${post.id} by user ${currentUser.id}`);
+             // Fetch updated counts from server (optional, if optimistic update isn't trusted)
+             // const updatedReactionData = await getReactions(post.id);
+             // setReactions(updatedReactionData.counts);
+             // setUserReaction(updatedReactionData.userReaction);
+         } catch (error) {
+             console.error("[BlogPostPage] Failed to update reaction:", error);
+             toast({ title: "Reaction Failed", description: "Could not save your reaction.", variant: "destructive" });
+             // Revert optimistic update on error
+             setReactions(prev => {
+                 const revertedCounts = { ...prev };
+                 if (newReaction) revertedCounts[newReaction] = Math.max(0, revertedCounts[newReaction] - 1);
+                 if (previousReaction) revertedCounts[previousReaction]++;
+                 return revertedCounts;
+             });
+             setUserReaction(previousReaction);
+         }
+     };
+     // --- End Reaction Handler ---
 
     // --- Edit and Delete Handlers ---
     const handleEdit = () => {
@@ -689,7 +798,8 @@ export default function BlogPostPage() {
   const isValidDate = isValid(publishedDate);
   const commentCount = post.commentCount ?? 0;
   const rating = post.rating ?? 0;
-  const views = post.views ?? 0;
+  // Use the state variable for views, falling back to post.views if null
+  const displayViews = viewCount !== null ? viewCount : (post.views ?? 0);
   const tags = post.tags || [];
 
   // Fallback for author data
@@ -734,7 +844,8 @@ export default function BlogPostPage() {
              <div className="flex items-center gap-1"> <Calendar className="h-4 w-4" /> <time dateTime={isValidDate ? publishedDate.toISOString() : undefined}>{isValidDate ? format(publishedDate, 'MMMM d, yyyy') : 'Invalid Date'}</time> </div>
              <div className="flex items-center gap-1"> <MessageSquare className="h-4 w-4" /> <span>{commentCount} Comments</span> </div>
              {rating > 0 && <div className="flex items-center gap-1"> <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> <span>{rating.toFixed(1)}</span> </div> }
-             {views > 0 && <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{views.toLocaleString()} Views</span> </div> }
+             {/* Display View Count */}
+             <div className="flex items-center gap-1"> <Eye className="h-4 w-4" /> <span>{displayViews.toLocaleString()} Views</span> </div>
            </div>
 
             {/* Edit/Delete Buttons - Conditionally Rendered */}
@@ -801,7 +912,17 @@ export default function BlogPostPage() {
               </div>
              )}
 
-           <div className="mt-8 py-4 border-t border-b flex flex-col sm:flex-row items-center justify-center gap-4">
+             {/* Reactions Section */}
+             <div className="mt-8 py-4 border-t flex items-center justify-center gap-2">
+                 <span className="text-sm font-medium mr-2">React:</span>
+                 <ReactionButton type="like" count={reactions.like} onClick={() => handleReaction('like')} hasReacted={userReaction === 'like'} />
+                 <ReactionButton type="love" count={reactions.love} onClick={() => handleReaction('love')} hasReacted={userReaction === 'love'} />
+                 <ReactionButton type="laugh" count={reactions.laugh} onClick={() => handleReaction('laugh')} hasReacted={userReaction === 'laugh'} />
+                 <ReactionButton type="frown" count={reactions.frown} onClick={() => handleReaction('frown')} hasReacted={userReaction === 'frown'} />
+                 <ReactionButton type="angry" count={reactions.angry} onClick={() => handleReaction('angry')} hasReacted={userReaction === 'angry'} />
+             </div>
+
+           <div className="mt-4 py-4 border-t border-b flex flex-col sm:flex-row items-center justify-center gap-4">
                 <span className="text-sm font-medium">Rate this post:</span>
                 <div className="flex gap-1">
                     {[1, 2, 3, 4, 5].map(star => (
