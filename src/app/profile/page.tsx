@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, type AuthUser } from '@/lib/auth/authContext';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,31 +12,30 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Edit, Save, Lock, Loader2, Mail, Phone, User as UserIcon, Users } from 'lucide-react'; // Added Users icon
+import { Calendar as CalendarIcon, Edit, Save, Lock, Loader2, Mail, Phone, User as UserIcon, Users, Camera, Image as ImageIcon } from 'lucide-react'; // Added Camera, ImageIcon
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // Added Dialog components
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import BlogPostCard from '@/components/blog-post-card'; // Reuse for displaying posts
-import type { Post } from '@/types/blog'; // Import Post type
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Import Table components
+import BlogPostCard from '@/components/blog-post-card';
+import type { Post } from '@/types/blog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import Image from 'next/image'; // Import Next Image
 
 // Mock API call - replace with actual fetch
 const fetchUserPosts = async (userId: string): Promise<Post[]> => {
     console.log(`[Profile] Fetching posts for user ID: ${userId}`);
     await new Promise(resolve => setTimeout(resolve, 700)); // Simulate delay
     try {
-        // Fetch using the authorId parameter
-        const response = await fetch(`/api/posts?author=${userId}&limit=100`); // Fetch many posts for the user
+        const response = await fetch(`/api/posts?author=${userId}&limit=100`);
         if (!response.ok) {
             throw new Error('Failed to fetch user posts');
         }
         const data = await response.json();
-        // Convert dates
         return (data.posts || []).map((post: any) => ({
             ...post,
             publishedAt: new Date(post.publishedAt),
             updatedAt: post.updatedAt ? new Date(post.updatedAt) : undefined,
-             // Ensure nested author has date object if present
              author: {
                  ...post.author,
                  joinedAt: post.author?.joinedAt ? new Date(post.author.joinedAt) : undefined,
@@ -54,8 +53,7 @@ const fetchAllUsers = async (requestingUserId: string): Promise<AuthUser[]> => {
     try {
         const response = await fetch('/api/users', {
             headers: {
-                // Include the requesting user's ID for server-side authorization check
-                 'X-Mock-User-ID': requestingUserId, // *** Add header here ***
+                 'X-Mock-User-ID': requestingUserId,
              }
         });
         if (!response.ok) {
@@ -65,16 +63,27 @@ const fetchAllUsers = async (requestingUserId: string): Promise<AuthUser[]> => {
              throw new Error(`Failed to fetch users: ${response.statusText}`);
          }
         const usersData: AuthUser[] = await response.json();
-        // Ensure dates are formatted correctly if necessary (mock DB already handles it)
          return usersData.map(user => ({
              ...user,
-             joinedAt: user.joinedAt ? new Date(user.joinedAt) : undefined, // Convert if needed
+             joinedAt: user.joinedAt ? new Date(user.joinedAt) : undefined,
          }));
     } catch (error) {
         console.error('[Profile] Error fetching all users:', error);
-        throw error; // Re-throw to be caught by caller
+        throw error;
     }
 }
+
+// Pre-installed avatar options (example using Pravatar)
+const PREINSTALLED_AVATARS = [
+    'https://i.pravatar.cc/150?img=1',
+    'https://i.pravatar.cc/150?img=5',
+    'https://i.pravatar.cc/150?img=8',
+    'https://i.pravatar.cc/150?img=12',
+    'https://i.pravatar.cc/150?img=25',
+    'https://i.pravatar.cc/150?img=32',
+    'https://i.pravatar.cc/150?img=45',
+    'https://i.pravatar.cc/150?img=55',
+];
 
 
 export default function ProfilePage() {
@@ -96,6 +105,14 @@ export default function ProfilePage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // State for avatar change
+  const [isAvatarDialogOpen, setIsAvatarDialogOpen] = useState(false);
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(currentUser?.photoURL || null); // Stores selected URL or file preview
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
 
   // State for user's posts
   const [userPosts, setUserPosts] = useState<Post[]>([]);
@@ -121,10 +138,8 @@ export default function ProfilePage() {
               .catch(err => toast({ title: "Error loading posts", description: "Could not fetch your posts.", variant: "destructive" }))
               .finally(() => setLoadingPosts(false));
 
-           // If user is admin, fetch all users
            if (currentUser.role === 'admin') {
                 setLoadingUsers(true);
-                // Pass the current user's ID for authorization in the API call
                 fetchAllUsers(currentUser.id)
                      .then(setAllUsers)
                      .catch(err => {
@@ -143,6 +158,7 @@ export default function ProfilePage() {
       setName(currentUser.name || '');
        setDob(currentUser.dob ? new Date(currentUser.dob) : undefined);
       setPhone(currentUser.phone || '');
+      setSelectedAvatarUrl(currentUser.photoURL || null); // Update avatar preview on context change
     }
   }, [currentUser]);
 
@@ -151,15 +167,12 @@ export default function ProfilePage() {
       if (!currentUser) return;
       setIsSavingProfile(true);
       try {
-           // Format dob to 'YYYY-MM-DD' string or null before sending
            const dobString = dob ? format(dob, 'yyyy-MM-dd') : null;
-
            const response = await fetch('/api/profile', {
                method: 'PUT',
                headers: {
                    'Content-Type': 'application/json',
-                    // Include authentication token/cookie header here if needed by your API
-                   'X-Mock-User-ID': currentUser.id, // Sending mock header for simulation
+                    'X-Mock-User-ID': currentUser.id,
                },
                body: JSON.stringify({ name, dob: dobString, phone }),
            });
@@ -169,7 +182,7 @@ export default function ProfilePage() {
                throw new Error(updatedUser.error || 'Failed to update profile');
            }
 
-           updateCurrentUser(updatedUser); // Update context
+           updateCurrentUser(updatedUser);
            toast({ title: "Profile Updated", description: "Your profile information has been saved." });
            setIsEditingProfile(false);
       } catch (error) {
@@ -194,11 +207,11 @@ export default function ProfilePage() {
 
        setIsSavingPassword(true);
        try {
-           const response = await fetch('/api/profile', { // Using POST for password change
+           const response = await fetch('/api/profile', {
                method: 'POST',
                headers: {
                    'Content-Type': 'application/json',
-                    'X-Mock-User-ID': currentUser.id, // Mock header
+                    'X-Mock-User-ID': currentUser.id,
                },
                body: JSON.stringify({ currentPassword, newPassword }),
            });
@@ -210,7 +223,6 @@ export default function ProfilePage() {
 
            toast({ title: "Password Changed", description: "Your password has been updated successfully." });
            setIsChangingPassword(false);
-           // Clear password fields
            setCurrentPassword('');
            setNewPassword('');
            setConfirmPassword('');
@@ -223,8 +235,71 @@ export default function ProfilePage() {
        }
    };
 
+    // --- Avatar Change Handlers ---
+    const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setSelectedAvatarFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setSelectedAvatarUrl(reader.result as string); // Show preview
+            }
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSelectPreinstalledAvatar = (url: string) => {
+        setSelectedAvatarFile(null); // Clear file selection
+        setSelectedAvatarUrl(url);
+    };
+
+    const handleAvatarSave = async () => {
+        if (!currentUser || !selectedAvatarUrl) return;
+        setIsSavingAvatar(true);
+
+        let finalPhotoURL = selectedAvatarUrl;
+
+        // Simulate Upload if a file was selected
+        if (selectedAvatarFile) {
+            console.log("Simulating upload for:", selectedAvatarFile.name);
+            // In a real app:
+            // const uploadedUrl = await uploadImageToStorage(selectedAvatarFile); // Your upload function
+            // finalPhotoURL = uploadedUrl;
+            await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
+            // For mock, we'll just use the data URL or a placeholder
+            // finalPhotoURL = `https://i.pravatar.cc/150?u=${currentUser.id}-${Date.now()}`; // New random one
+            console.log("Upload simulation complete. Using preview/selected URL:", finalPhotoURL);
+        }
+
+
+        try {
+             const response = await fetch('/api/profile', {
+                 method: 'PUT',
+                 headers: {
+                     'Content-Type': 'application/json',
+                     'X-Mock-User-ID': currentUser.id,
+                 },
+                 body: JSON.stringify({ photoURL: finalPhotoURL }), // Send the final URL
+             });
+             const updatedUser = await response.json();
+
+             if (!response.ok) {
+                 throw new Error(updatedUser.error || 'Failed to update avatar');
+             }
+
+             updateCurrentUser({ photoURL: finalPhotoURL }); // Update context
+             toast({ title: "Avatar Updated", description: "Your profile picture has been saved." });
+             setIsAvatarDialogOpen(false); // Close dialog
+        } catch (error) {
+            console.error("Avatar update error:", error);
+            toast({ title: "Avatar Update Failed", description: error instanceof Error ? error.message : "Could not save avatar.", variant: "destructive" });
+        } finally {
+            setIsSavingAvatar(false);
+        }
+    };
+    // --- End Avatar Change Handlers ---
+
   if (authLoading || !currentUser) {
-    // Show loading skeleton while auth check is happening or if no user
     return (
         <div className="container mx-auto py-12">
             <Card className="max-w-4xl mx-auto">
@@ -252,15 +327,90 @@ export default function ProfilePage() {
   }
 
    const joinedDate = currentUser.joinedAt instanceof Date ? currentUser.joinedAt : new Date(currentUser.joinedAt || Date.now());
+   const currentAvatar = currentUser.photoURL || undefined;
 
   return (
     <div className="container mx-auto py-12">
       <Card className="max-w-4xl mx-auto mb-12 shadow-lg">
-        <CardHeader className="text-center border-b pb-6">
-           <Avatar className="h-24 w-24 mx-auto mb-4 border-4 border-primary">
-             <AvatarImage src={currentUser.photoURL || undefined} alt={currentUser.name || 'User'} />
-             <AvatarFallback className="text-3xl">{currentUser.name?.[0] || currentUser.email?.[0] || 'U'}</AvatarFallback>
-           </Avatar>
+        <CardHeader className="text-center border-b pb-6 relative"> {/* Added relative */}
+             {/* Avatar with Edit Button */}
+             <div className="relative w-24 h-24 mx-auto mb-4">
+                 <Avatar className="h-full w-full border-4 border-primary">
+                   <AvatarImage src={selectedAvatarUrl || currentAvatar} alt={currentUser.name || 'User'} />
+                   <AvatarFallback className="text-3xl">{currentUser.name?.[0] || currentUser.email?.[0] || 'U'}</AvatarFallback>
+                 </Avatar>
+                 <Dialog open={isAvatarDialogOpen} onOpenChange={setIsAvatarDialogOpen}>
+                     <DialogTrigger asChild>
+                        <Button variant="outline" size="icon" className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-background/80 hover:bg-accent">
+                           <Camera className="h-4 w-4" />
+                           <span className="sr-only">Change Avatar</span>
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[600px]">
+                         <DialogHeader>
+                           <DialogTitle>Change Profile Picture</DialogTitle>
+                           <DialogDescription>
+                             Select a pre-installed avatar or upload your own image.
+                           </DialogDescription>
+                         </DialogHeader>
+                         <div className="grid gap-6 py-4">
+                             {/* Current/Preview Avatar */}
+                             <div className="flex justify-center">
+                                 <Avatar className="h-32 w-32 border-4 border-primary">
+                                     <AvatarImage src={selectedAvatarUrl || currentAvatar} alt="Avatar Preview" />
+                                     <AvatarFallback className="text-4xl">{currentUser.name?.[0] || currentUser.email?.[0] || 'U'}</AvatarFallback>
+                                 </Avatar>
+                             </div>
+                             {/* Pre-installed Avatars */}
+                             <div>
+                                <Label>Select an Avatar</Label>
+                                <div className="grid grid-cols-4 gap-2 mt-2">
+                                     {PREINSTALLED_AVATARS.map((url) => (
+                                        <button
+                                            key={url}
+                                            onClick={() => handleSelectPreinstalledAvatar(url)}
+                                            className={cn(
+                                                "rounded-full overflow-hidden border-2 transition-all",
+                                                selectedAvatarUrl === url ? "border-primary ring-2 ring-primary ring-offset-2" : "border-transparent hover:border-muted-foreground"
+                                            )}
+                                        >
+                                            <Image src={url} alt="Avatar option" width={80} height={80} className="aspect-square object-cover" />
+                                        </button>
+                                     ))}
+                                </div>
+                             </div>
+                             {/* Upload Option */}
+                              <div>
+                                 <Label htmlFor="avatar-upload">Or Upload Your Own</Label>
+                                  <div className="flex items-center gap-2 mt-2">
+                                     <Input
+                                         id="avatar-upload"
+                                         type="file"
+                                         accept="image/png, image/jpeg, image/gif"
+                                         ref={fileInputRef}
+                                         onChange={handleAvatarFileChange}
+                                         className="hidden" // Hide default input
+                                     />
+                                     <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                         <ImageIcon className="mr-2 h-4 w-4" /> Choose File...
+                                     </Button>
+                                      {selectedAvatarFile && <span className="text-sm text-muted-foreground truncate max-w-[200px]">{selectedAvatarFile.name}</span>}
+                                  </div>
+                                   <p className="text-xs text-muted-foreground mt-1">Recommended: Square image, less than 2MB.</p>
+                              </div>
+                         </div>
+                         <DialogFooter>
+                           <DialogClose asChild>
+                             <Button type="button" variant="outline" disabled={isSavingAvatar}>Cancel</Button>
+                            </DialogClose>
+                           <Button type="button" onClick={handleAvatarSave} disabled={isSavingAvatar || !selectedAvatarUrl}>
+                             {isSavingAvatar ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                             {isSavingAvatar ? 'Saving...' : 'Save Avatar'}
+                           </Button>
+                         </DialogFooter>
+                       </DialogContent>
+                   </Dialog>
+             </div>
           <CardTitle className="text-2xl">{currentUser.name || 'User Profile'}</CardTitle>
           <CardDescription>
             {currentUser.email} - Joined {format(joinedDate, 'MMMM d, yyyy')}
@@ -272,7 +422,7 @@ export default function ProfilePage() {
         <CardContent className="pt-6">
             <div className="flex justify-between items-center mb-4">
                  <h3 className="text-lg font-semibold">Personal Information</h3>
-                  {!isChangingPassword && ( // Hide edit profile button when changing password
+                  {!isChangingPassword && (
                       <Button variant="outline" size="sm" onClick={() => setIsEditingProfile(!isEditingProfile)}>
                           <Edit className="mr-2 h-4 w-4" />
                           {isEditingProfile ? 'Cancel Edit' : 'Edit Profile'}
@@ -354,7 +504,7 @@ export default function ProfilePage() {
          <CardContent className="pt-6 border-t mt-6">
              <div className="flex justify-between items-center mb-4">
                  <h3 className="text-lg font-semibold">Change Password</h3>
-                  {!isEditingProfile && ( // Hide change password button when editing profile
+                  {!isEditingProfile && (
                       <Button variant="outline" size="sm" onClick={() => setIsChangingPassword(!isChangingPassword)}>
                           <Lock className="mr-2 h-4 w-4" />
                            {isChangingPassword ? 'Cancel Change' : 'Change Password'}
