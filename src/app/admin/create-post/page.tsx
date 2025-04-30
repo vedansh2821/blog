@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, Controller, type SubmitHandler, useWatch } from 'react-hook-form'; // Added useWatch
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -30,6 +30,7 @@ const postFormSchema = z.object({
         required_error: "You need to select a post category.",
     }),
     content: z.string().refine((value) => {
+        // Basic check: Remove HTML tags and check if remaining text meets minimum length
         const textContent = value.replace(/<[^>]*>/g, '').trim();
         return textContent.length >= 50;
     }, {
@@ -66,6 +67,8 @@ export default function CreatePostPage() {
     const watchedContent = watch('content');
     const watchedTitle = watch('title');
     const watchedImageUrl = watch('imageUrl');
+    const watchedCategory = watch('category'); // Watch category
+    const watchedExcerpt = watch('excerpt'); // Watch excerpt
 
     // Effect for redirecting unauthorized users
     React.useEffect(() => {
@@ -77,11 +80,10 @@ export default function CreatePostPage() {
 
     // Effect to update image preview when file or URL changes
     useEffect(() => {
+        let objectUrl: string | null = null;
         if (selectedImage) {
-            const objectUrl = URL.createObjectURL(selectedImage);
+            objectUrl = URL.createObjectURL(selectedImage);
             setImagePreviewUrl(objectUrl);
-            // Clean up the object URL when the component unmounts or the image changes
-            return () => URL.revokeObjectURL(objectUrl);
         } else if (watchedImageUrl) {
              // Very basic URL validation for preview
              try {
@@ -93,6 +95,12 @@ export default function CreatePostPage() {
         } else {
             setImagePreviewUrl(null); // No image selected or URL provided
         }
+         // Clean up the object URL when the component unmounts or the image changes
+        return () => {
+             if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+             }
+        };
     }, [selectedImage, watchedImageUrl]);
 
     // Function to handle form submission
@@ -327,34 +335,47 @@ export default function CreatePostPage() {
                         <Separator className="my-8" />
 
                         {/* Live Preview Section */}
-                        <div>
+                         <div>
                             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                <Eye className="h-5 w-5 text-muted-foreground" /> Live Preview
+                                <Eye className="h-5 w-5 text-muted-foreground" /> Live Post Card Preview
                             </h3>
-                            <Card className="bg-muted/30 p-4 min-h-[200px]">
+                             <Card className="bg-muted/30 p-4 w-full max-w-sm"> {/* Mimic BlogPostCard structure */}
                                 <CardContent className="p-0">
-                                    {watchedImageUrl && (
-                                        <div className="relative w-full h-48 mb-4 rounded overflow-hidden">
+                                    {/* Preview Image */}
+                                     {imagePreviewUrl ? (
+                                        <div className="relative h-48 w-full overflow-hidden rounded-t-lg mb-4">
                                              <img
-                                                 src={watchedImageUrl}
-                                                 alt="Preview"
-                                                 className="absolute inset-0 w-full h-full object-cover"
-                                                 onError={(e) => e.currentTarget.style.display='none'} // Hide if broken
-                                             />
+                                                src={imagePreviewUrl}
+                                                alt="Preview"
+                                                className="absolute inset-0 w-full h-full object-cover"
+                                                onError={(e) => e.currentTarget.style.display='none'} // Hide if broken
+                                            />
+                                             {watchedCategory && <span className="absolute top-2 right-2 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-semibold">{watchedCategory}</span>}
                                         </div>
-                                    )}
-                                    {watchedTitle && <h1 className="text-2xl font-bold mb-4">{watchedTitle}</h1>}
-                                    {watchedContent ? (
-                                        <div
-                                            className="prose prose-sm dark:prose-invert max-w-none"
-                                            dangerouslySetInnerHTML={{ __html: watchedContent }}
-                                        />
-                                    ) : (
-                                        <p className="text-muted-foreground italic">Content preview will appear here...</p>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </div>
+                                     ) : (
+                                          <div className="h-48 w-full bg-muted rounded-t-lg flex items-center justify-center text-muted-foreground mb-4">Image Preview</div>
+                                     )}
+
+                                     {/* Preview Title */}
+                                     <h4 className="text-lg font-semibold mb-1 px-4 leading-tight line-clamp-2">
+                                        {watchedTitle || <span className="text-muted-foreground">Title preview...</span>}
+                                     </h4>
+
+                                     {/* Preview Excerpt */}
+                                     <p className="text-sm text-muted-foreground mb-3 px-4 line-clamp-3">
+                                         {watchedExcerpt || <span className="italic">Excerpt preview...</span>}
+                                     </p>
+
+                                     {/* Basic Meta Preview */}
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground px-4 pb-4 border-t pt-3 mt-3">
+                                         <Skeleton className="h-5 w-5 rounded-full" />
+                                         <span className="text-xs">{currentUser?.name || 'Author'}</span>
+                                         <span>·</span>
+                                         <span className="text-xs">Just now</span>
+                                      </div>
+                                 </CardContent>
+                             </Card>
+                         </div>
 
 
                         {/* Submit Button */}
@@ -370,4 +391,3 @@ export default function CreatePostPage() {
         </div>
     );
 }
-```
