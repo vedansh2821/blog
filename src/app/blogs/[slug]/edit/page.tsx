@@ -84,9 +84,10 @@ export default function EditPostPage() {
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
+    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); // State for image preview URL
 
     // React Hook Form setup
-    const { register, handleSubmit, formState: { errors }, control, reset, setValue } = useForm<PostFormInputs>({
+    const { register, handleSubmit, formState: { errors }, control, reset, setValue, watch } = useForm<PostFormInputs>({
         resolver: zodResolver(postFormSchema),
         defaultValues: { // Initialize with empty strings or undefined
             title: '',
@@ -97,6 +98,9 @@ export default function EditPostPage() {
             tags: '',
         },
     });
+
+    // Watch image URL for preview update
+    const watchedImageUrl = watch('imageUrl');
 
     // Effect to load post data and check authorization
     useEffect(() => {
@@ -116,6 +120,7 @@ export default function EditPostPage() {
             }
 
             setPostData(fetchedPost);
+            setImagePreviewUrl(fetchedPost.imageUrl); // Set initial preview URL
 
             // Authorization check
             if (!currentUser) {
@@ -151,6 +156,34 @@ export default function EditPostPage() {
         loadAndAuthorize();
 
     }, [slug, currentUser, authLoading, router, toast, reset]);
+
+
+    // Effect to update image preview when file or URL changes
+    useEffect(() => {
+        let objectUrl: string | null = null;
+        if (selectedImage) {
+            objectUrl = URL.createObjectURL(selectedImage);
+            setImagePreviewUrl(objectUrl);
+        } else if (watchedImageUrl) {
+             try {
+                new URL(watchedImageUrl);
+                setImagePreviewUrl(watchedImageUrl);
+             } catch (_) {
+                 setImagePreviewUrl(postData?.imageUrl || null); // Revert to original or null if invalid
+             }
+        } else if (postData?.imageUrl){
+            setImagePreviewUrl(postData.imageUrl); // Revert to original if URL field cleared
+        } else {
+            setImagePreviewUrl(null);
+        }
+        // Clean up
+        return () => {
+             if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+             }
+        };
+    }, [selectedImage, watchedImageUrl, postData?.imageUrl]);
+
 
     // Function to handle form submission for updates
     const onSubmit: SubmitHandler<PostFormInputs> = async (data) => {
@@ -332,44 +365,51 @@ export default function EditPostPage() {
                          {/* Image Handling */}
                          <div>
                              <Label>Featured Image</Label>
-                             <div className="flex flex-col gap-4">
-                                 {/* Current/Selected Image Preview */}
-                                 <div className="flex items-center gap-4">
-                                     <Label htmlFor="imageUrl" className="text-sm font-normal w-20 shrink-0">Current URL</Label>
-                                     <Input
-                                         id="imageUrl"
-                                         {...register('imageUrl')}
-                                         placeholder="Paste image URL"
-                                         className="flex-grow"
-                                         disabled={isSubmitting || !!selectedImage}
-                                     />
-                                      {(postData?.imageUrl && !selectedImage) && (
-                                         <img src={postData.imageUrl} alt="Current" className="h-16 w-16 object-cover rounded-md border" />
-                                     )}
-                                      {selectedImage ? (
-                                         <img src={URL.createObjectURL(selectedImage)} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
-                                      ) : (
-                                          !postData?.imageUrl && <Skeleton className="h-16 w-16 rounded-md" /> // Show skeleton if no URL and no selection
-                                      )}
-                                 </div>
-                                 {errors.imageUrl && <p className="text-xs text-destructive">{errors.imageUrl.message}</p>}
-
-                                  {/* Image Upload Option */}
-                                 <div className="flex items-center gap-4">
-                                      <Label htmlFor="imageFile" className="text-sm font-normal w-20 shrink-0">Upload New</Label>
+                             <div className="flex flex-col sm:flex-row gap-4 items-start">
+                                 {/* Image URL Input */}
+                                <div className="flex-grow space-y-2">
+                                    <Label htmlFor="imageUrl" className="text-sm font-normal">Image URL</Label>
+                                    <Input
+                                        id="imageUrl"
+                                        {...register('imageUrl')}
+                                        placeholder="Paste an image URL (e.g., from Unsplash)"
+                                        disabled={isSubmitting || !!selectedImage}
+                                    />
+                                     {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
+                                </div>
+                                <div className="text-center text-sm text-muted-foreground sm:pt-8">OR</div>
+                                {/* Image Upload Option */}
+                                <div className="flex-grow space-y-2">
+                                     <Label htmlFor="imageFile" className="text-sm font-normal">Upload Image (Optional)</Label>
                                      <Input
                                          id="imageFile"
                                          type="file"
                                          accept="image/*"
                                          disabled={isSubmitting}
                                          onChange={handleImageChange}
-                                         className="cursor-pointer flex-grow"
+                                         className="cursor-pointer"
                                      />
-                                 </div>
-                                  <p className="text-xs text-muted-foreground">Upload & Crop functionality is not yet implemented. Use the URL field above.</p>
-                                  {/* TODO: Add Crop Button/Functionality */}
-                                  {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image (Not Implemented)</Button> */}
+                                      <p className="text-xs text-muted-foreground">Upload & Crop functionality is not yet implemented. Use the URL field above.</p>
+                                      {/* TODO: Add Crop Button/Functionality */}
+                                      {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image (Not Implemented)</Button> */}
+                                </div>
                              </div>
+                             {/* Image Preview */}
+                              <div className="mt-4">
+                                 <p className="text-sm font-medium mb-2">Image Preview:</p>
+                                  {imagePreviewUrl ? (
+                                      <img
+                                          src={imagePreviewUrl}
+                                          alt="Image preview"
+                                          className="max-h-40 w-auto rounded-md shadow-sm object-contain border"
+                                          onError={() => setImagePreviewUrl(postData?.imageUrl || null)} // Revert to original on error
+                                      />
+                                  ) : (
+                                      <div className="h-40 w-full max-w-xs rounded-md bg-muted flex items-center justify-center text-muted-foreground">
+                                          No Image Preview
+                                      </div>
+                                  )}
+                              </div>
                          </div>
 
 
