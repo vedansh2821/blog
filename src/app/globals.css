@@ -1,10 +1,10 @@
 
+/* Import Quill's snow theme - MOVED TO TOP */
+@import 'quill/dist/quill.snow.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import Quill's snow theme */
-@import 'quill/dist/quill.snow.css';
 
 body {
   font-family: var(--font-geist-sans), sans-serif;
