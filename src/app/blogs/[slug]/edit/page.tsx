@@ -2,12 +2,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form'; // Added Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'; // Keep for excerpt
+import RichTextEditor from '@/components/rich-text-editor/RichTextEditor'; // Import the new editor
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,17 +18,23 @@ import { Loader2, Save } from 'lucide-react';
 import { useAuth } from '@/lib/auth/authContext';
 import type { Post } from '@/types/blog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils'; // Import cn
 
 // Ensure categories match those used elsewhere
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
-// Updated Schema for the edit form: Use 'content' instead of structured fields
+// Updated Schema for the edit form: Use RichTextEditor for 'content'
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
-    content: z.string().min(50, { message: 'Content must be at least 50 characters.' }), // Main content field
+    content: z.string().refine((value) => {
+        const textContent = value.replace(/<[^>]*>/g, '').trim();
+        return textContent.length >= 50;
+    }, {
+        message: 'Content must contain at least 50 characters of text.',
+    }),
     excerpt: z.string().min(10).max(200, { message: 'Excerpt must be between 10 and 200 characters.' }).optional().or(z.literal('')),
     imageUrl: z.string().url({ message: 'Please enter a valid image URL.' }).optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
@@ -57,7 +64,7 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
                  joinedAt: data.author.joinedAt ? new Date(data.author.joinedAt) : undefined,
              } : undefined,
             // Ensure content is a string, even if fetched data is structured
-            content: typeof data.content === 'string' ? data.content : (data.paragraphs?.join('\n') || ''),
+            content: typeof data.content === 'string' ? data.content : '',
         };
     } catch (error) {
         console.error(`[Edit Page] Error fetching post details for ${slug}:`, error);
@@ -160,7 +167,7 @@ export default function EditPostPage() {
             const updatePayload = {
                 title: data.title,
                 category: data.category,
-                content: data.content, // Send the content from the textarea
+                content: data.content, // Send the content from the editor
                 excerpt: data.excerpt,
                 imageUrl: data.imageUrl, // Handle image upload separately if needed
                 tags: tagsArray,
@@ -225,7 +232,7 @@ export default function EditPostPage() {
     if (isLoadingData || authLoading) {
         return (
             <div className="container mx-auto py-12">
-                <Card className="max-w-3xl mx-auto">
+                <Card className="max-w-4xl mx-auto"> {/* Increased max-width */}
                     <CardHeader>
                         <Skeleton className="h-8 w-1/2 mb-2" />
                         <Skeleton className="h-4 w-3/4" />
@@ -234,7 +241,7 @@ export default function EditPostPage() {
                          {/* Match skeleton structure to form fields */}
                          <Skeleton className="h-10 w-full" /> {/* Title */}
                          <Skeleton className="h-10 w-full" /> {/* Category */}
-                         <Skeleton className="h-64 w-full" /> {/* Content */}
+                         <Skeleton className="h-64 w-full" /> {/* Content (Editor) */}
                          <Skeleton className="h-20 w-full" /> {/* Excerpt */}
                          <Skeleton className="h-24 w-full" /> {/* Image */}
                          <Skeleton className="h-10 w-full" /> {/* Tags */}
@@ -261,7 +268,7 @@ export default function EditPostPage() {
     // Main component render: Edit form
     return (
         <div className="container mx-auto py-12">
-            <Card className="max-w-3xl mx-auto shadow-lg">
+            <Card className="max-w-4xl mx-auto shadow-lg"> {/* Increased max-width */}
                 <CardHeader>
                     <CardTitle className="text-2xl">Edit Blog Post</CardTitle>
                     <CardDescription>Update the details for your post below.</CardDescription>
@@ -296,18 +303,23 @@ export default function EditPostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Content Textarea */}
-                        <div>
-                            <Label htmlFor="content">Content</Label>
-                            <Textarea id="content"
-                                rows={15} // Increased rows
-                                placeholder="Write your blog content here. You can use Markdown or basic HTML for formatting."
-                                disabled={isSubmitting}
-                                {...register('content')}
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">The main body of your post.</p>
-                            {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
-                        </div>
+                         {/* Content Rich Text Editor */}
+                         <div className="space-y-1">
+                           <Label htmlFor="content">Content</Label>
+                           <Controller
+                             name="content"
+                             control={control}
+                             render={({ field }) => (
+                               <RichTextEditor
+                                 value={field.value}
+                                 onChange={field.onChange}
+                                 placeholder="Edit your blog post content here..."
+                                 disabled={isSubmitting}
+                               />
+                             )}
+                           />
+                           {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
+                         </div>
 
 
                         {/* Excerpt */}
@@ -334,8 +346,10 @@ export default function EditPostPage() {
                                       {(postData?.imageUrl && !selectedImage) && (
                                          <img src={postData.imageUrl} alt="Current" className="h-16 w-16 object-cover rounded-md border" />
                                      )}
-                                      {selectedImage && (
+                                      {selectedImage ? (
                                          <img src={URL.createObjectURL(selectedImage)} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
+                                      ) : (
+                                          !postData?.imageUrl && <Skeleton className="h-16 w-16 rounded-md" /> // Show skeleton if no URL and no selection
                                       )}
                                  </div>
                                  {errors.imageUrl && <p className="text-xs text-destructive">{errors.imageUrl.message}</p>}

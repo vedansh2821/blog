@@ -1,13 +1,14 @@
 
 'use client';
 
-import React, { useState } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import React, { useState, useEffect } from 'react';
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form'; // Added Controller
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'; // Keep for excerpt
+import RichTextEditor from '@/components/rich-text-editor/RichTextEditor'; // Import the new editor
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,17 +17,26 @@ import { useRouter } from 'next/navigation';
 import { Loader2, PlusCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth/authContext';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils'; // Import cn
 
 // Ensure categories match those used in mock-sql or fetched dynamically
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
-// Updated schema: Replace heading, subheadings, paragraphs with 'content'
+// Updated schema: Use RichTextEditor for 'content'
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
         required_error: "You need to select a post category.",
     }),
-    content: z.string().min(50, { message: 'Content must be at least 50 characters.' }), // Main content field
+    // Content validation: Check if the *string* value from the editor is not empty
+    // and optionally has a minimum length after stripping HTML tags for a rough estimate.
+    content: z.string().refine((value) => {
+        // Basic check: remove tags and trim, then check length
+        const textContent = value.replace(/<[^>]*>/g, '').trim();
+        return textContent.length >= 50;
+    }, {
+        message: 'Content must contain at least 50 characters of text.',
+    }),
     excerpt: z.string().min(10).max(200, { message: 'Excerpt must be between 10 and 200 characters.' }).optional().or(z.literal('')),
     imageUrl: z.string().url({ message: 'Please enter a valid image URL.' }).optional().or(z.literal('')),
     tags: z.string().optional(), // Comma-separated tags
@@ -41,7 +51,7 @@ export default function CreatePostPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [selectedImage, setSelectedImage] = useState<File | null>(null);
 
-    const { register, handleSubmit, formState: { errors }, control, setValue } = useForm<PostFormInputs>({
+    const { register, handleSubmit, formState: { errors }, control, setValue, trigger } = useForm<PostFormInputs>({ // Added trigger
         resolver: zodResolver(postFormSchema),
         defaultValues: {
             title: '',
@@ -77,7 +87,7 @@ export default function CreatePostPage() {
             const postData = {
                 title: data.title,
                 category: data.category,
-                content: data.content, // Send the content from the textarea
+                content: data.content, // Send the content from the editor
                 excerpt: data.excerpt,
                 imageUrl: data.imageUrl, // Image URL takes precedence if file not handled
                 tags: tagsArray,
@@ -152,7 +162,7 @@ export default function CreatePostPage() {
                     <CardContent className="space-y-6">
                         <Skeleton className="h-10 w-full" /> {/* Title */}
                         <Skeleton className="h-10 w-full" /> {/* Category */}
-                        <Skeleton className="h-64 w-full" /> {/* Content */}
+                        <Skeleton className="h-64 w-full" /> {/* Content (Editor) */}
                         <Skeleton className="h-20 w-full" /> {/* Excerpt */}
                         <Skeleton className="h-24 w-full" /> {/* Image */}
                         <Skeleton className="h-10 w-full" /> {/* Tags */}
@@ -168,7 +178,7 @@ export default function CreatePostPage() {
     // Main component render
     return (
         <div className="container mx-auto py-12">
-            <Card className="max-w-3xl mx-auto shadow-lg">
+            <Card className="max-w-4xl mx-auto shadow-lg"> {/* Increased max-width */}
                 <CardHeader>
                     <CardTitle className="text-2xl">Create New Blog Post</CardTitle>
                     <CardDescription>Fill in the details below to publish a new post.</CardDescription>
@@ -201,18 +211,27 @@ export default function CreatePostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Content Textarea */}
-                        <div>
-                            <Label htmlFor="content">Content</Label>
-                            <Textarea id="content"
-                                rows={15} // Increased rows for better writing experience
-                                placeholder="Write your blog content here. You can use Markdown or basic HTML for formatting (e.g., # Heading, **bold**, *italic*)."
-                                disabled={isSubmitting}
-                                {...register('content')}
-                            />
-                             <p className="text-xs text-muted-foreground mt-1">This is the main body of your post.</p>
+                        {/* Content Rich Text Editor */}
+                        <div className="space-y-1">
+                           <Label htmlFor="content">Content</Label>
+                           <Controller
+                             name="content"
+                             control={control}
+                             render={({ field }) => (
+                               <RichTextEditor
+                                 value={field.value}
+                                 onChange={(value) => {
+                                     field.onChange(value);
+                                     // Optionally trigger validation on change
+                                     // trigger('content');
+                                 }}
+                                 placeholder="Write your blog post here..."
+                                 disabled={isSubmitting}
+                               />
+                             )}
+                           />
                             {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
-                        </div>
+                         </div>
 
                         {/* Excerpt */}
                         <div>
@@ -246,20 +265,24 @@ export default function CreatePostPage() {
                                          onChange={handleImageChange}
                                          className="cursor-pointer"
                                      />
-                                      <p className="text-xs text-muted-foreground">Upload is currently not implemented. Please use the URL field.</p>
+                                      <p className="text-xs text-muted-foreground">Upload & Crop is currently not implemented. Please use the URL field.</p>
+                                       {/* TODO: Add Crop Button/Functionality */}
+                                       {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image</Button> */}
                                 </div>
                              </div>
                              {/* Image Preview */}
-                             {selectedImage && (
-                                 <div className="mt-4">
-                                     <p className="text-sm font-medium mb-2">Selected Image Preview:</p>
+                              <div className="mt-4">
+                                 <p className="text-sm font-medium mb-2">Image Preview:</p>
+                                 {selectedImage ? (
                                      <img
                                          src={URL.createObjectURL(selectedImage)}
                                          alt="Selected preview"
                                          className="max-h-40 rounded-md shadow-sm object-cover border"
                                      />
-                                 </div>
-                             )}
+                                  ) : (
+                                      <Skeleton className="h-40 w-full max-w-xs rounded-md" />
+                                  )}
+                             </div>
                          </div>
 
                         {/* Tags Input */}
@@ -271,7 +294,7 @@ export default function CreatePostPage() {
                         </div>
 
                         {/* Submit Button */}
-                        <div className="flex justify-end">
+                        <div className="flex justify-end pt-4 border-t">
                             <Button type="submit" disabled={isSubmitting} size="lg">
                                 {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                                 {isSubmitting ? 'Publishing...' : 'Publish Post'}
