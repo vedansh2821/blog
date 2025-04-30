@@ -2,13 +2,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useForm, Controller, type SubmitHandler } from 'react-hook-form'; // Added Controller
+import { useForm, Controller, type SubmitHandler, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea'; // Keep for excerpt
-import RichTextEditor from '@/components/rich-text-editor/RichTextEditor'; // Import the new editor
+// Import the new Quill editor
+import QuillEditor from '@/components/rich-text-editor/QuillEditor';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,12 +19,12 @@ import { Loader2, Save } from 'lucide-react';
 import { useAuth } from '@/lib/auth/authContext';
 import type { Post } from '@/types/blog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils'; // Import cn
+import { cn } from '@/lib/utils';
+import Image from 'next/image'; // Use Next Image
 
-// Ensure categories match those used elsewhere
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
-// Updated Schema for the edit form: Use RichTextEditor for 'content'
+// Updated Schema for the edit form: Use QuillEditor for 'content'
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
@@ -63,8 +64,7 @@ const fetchPostDetailsForEdit = async (slug: string): Promise<Post | null> => {
                  ...data.author,
                  joinedAt: data.author.joinedAt ? new Date(data.author.joinedAt) : undefined,
              } : undefined,
-            // Ensure content is a string, even if fetched data is structured
-            content: typeof data.content === 'string' ? data.content : '',
+            content: typeof data.content === 'string' ? data.content : '', // Ensure content is string
         };
     } catch (error) {
         console.error(`[Edit Page] Error fetching post details for ${slug}:`, error);
@@ -83,46 +83,44 @@ export default function EditPostPage() {
     const [postData, setPostData] = useState<Post | null>(null);
     const [isLoadingData, setIsLoadingData] = useState(true);
     const [isAuthorized, setIsAuthorized] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<File | null>(null);
-    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); // State for image preview URL
+    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null); // Store File object
+    const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
     // React Hook Form setup
     const { register, handleSubmit, formState: { errors }, control, reset, setValue, watch } = useForm<PostFormInputs>({
         resolver: zodResolver(postFormSchema),
-        defaultValues: { // Initialize with empty strings or undefined
+        defaultValues: {
             title: '',
             category: undefined,
-            content: '', // Use content field
+            content: '',
             excerpt: '',
             imageUrl: '',
             tags: '',
         },
     });
 
-    // Watch image URL for preview update
-    const watchedImageUrl = watch('imageUrl');
+    const watchedImageUrl = watch('imageUrl'); // Keep watching URL
 
     // Effect to load post data and check authorization
     useEffect(() => {
-        if (!slug || authLoading) return; // Wait for slug and auth state
+        if (!slug || authLoading) return;
 
         const loadAndAuthorize = async () => {
             setIsLoadingData(true);
-            setIsAuthorized(false); // Reset authorization state
+            setIsAuthorized(false);
 
             const fetchedPost = await fetchPostDetailsForEdit(slug);
 
             if (!fetchedPost) {
                 toast({ title: "Error", description: "Post not found.", variant: "destructive" });
-                router.push('/blogs'); // Redirect if post not found
+                router.push('/blogs');
                 setIsLoadingData(false);
                 return;
             }
 
             setPostData(fetchedPost);
-            setImagePreviewUrl(fetchedPost.imageUrl); // Set initial preview URL
+            setImagePreviewUrl(fetchedPost.imageUrl); // Set initial preview
 
-            // Authorization check
             if (!currentUser) {
                 toast({ title: "Unauthorized", description: "You must be logged in to edit posts.", variant: "destructive" });
                 router.push('/login');
@@ -135,19 +133,18 @@ export default function EditPostPage() {
 
             if (!canEdit) {
                 toast({ title: "Forbidden", description: "You do not have permission to edit this post.", variant: "destructive" });
-                router.push(`/blogs/${slug}`); // Redirect back to post view
+                router.push(`/blogs/${slug}`);
                 setIsLoadingData(false);
                 return;
             }
 
-            // Pre-fill the form if authorized and post data is loaded
             reset({
                 title: fetchedPost.title || '',
-                category: fetchedPost.category as PostFormInputs['category'], // Cast category
+                category: fetchedPost.category as PostFormInputs['category'],
                 content: fetchedPost.content || '', // Use content field
                 excerpt: fetchedPost.excerpt || '',
                 imageUrl: fetchedPost.imageUrl || '',
-                tags: fetchedPost.tags?.join(', ') || '', // Convert tags array back to string
+                tags: fetchedPost.tags?.join(', ') || '',
             });
 
             setIsLoadingData(false);
@@ -161,18 +158,21 @@ export default function EditPostPage() {
     // Effect to update image preview when file or URL changes
     useEffect(() => {
         let objectUrl: string | null = null;
-        if (selectedImage) {
-            objectUrl = URL.createObjectURL(selectedImage);
+        if (selectedImageFile) {
+            objectUrl = URL.createObjectURL(selectedImageFile);
             setImagePreviewUrl(objectUrl);
+            setValue('imageUrl', ''); // Clear URL if file is selected
         } else if (watchedImageUrl) {
              try {
                 new URL(watchedImageUrl);
                 setImagePreviewUrl(watchedImageUrl);
              } catch (_) {
-                 setImagePreviewUrl(postData?.imageUrl || null); // Revert to original or null if invalid
+                 // If URL is invalid, revert to original post image or null
+                 setImagePreviewUrl(postData?.imageUrl || null);
              }
         } else if (postData?.imageUrl){
-            setImagePreviewUrl(postData.imageUrl); // Revert to original if URL field cleared
+            // If URL field is cleared, revert to original post image
+            setImagePreviewUrl(postData.imageUrl);
         } else {
             setImagePreviewUrl(null);
         }
@@ -182,7 +182,7 @@ export default function EditPostPage() {
                 URL.revokeObjectURL(objectUrl);
              }
         };
-    }, [selectedImage, watchedImageUrl, postData?.imageUrl]);
+    }, [selectedImageFile, watchedImageUrl, postData?.imageUrl, setValue]);
 
 
     // Function to handle form submission for updates
@@ -192,28 +192,32 @@ export default function EditPostPage() {
             return;
         }
         setIsSubmitting(true);
+        let finalImageUrl = data.imageUrl; // Start with the URL field value
+
         try {
-            // Process tags from string input to array
+            // **Image Upload Logic (Placeholder)**
+            if (selectedImageFile) {
+                console.warn("Image file selected, but upload functionality is not implemented. Using placeholder image URL.");
+                // In a real app, implement upload logic here similar to create-post page
+                 // const formData = new FormData();
+                 // formData.append('file', selectedImageFile);
+                 // ... send formData to upload endpoint ...
+                 // finalImageUrl = uploadResult.secure_url;
+                 finalImageUrl = postData.imageUrl; // Use original URL as placeholder for now
+                 toast({title: "Image Upload Skipped", description: "Using the existing image URL as upload is not implemented."});
+            }
+
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
-            // Construct the payload for the API update - send 'content' directly
             const updatePayload = {
                 title: data.title,
                 category: data.category,
-                content: data.content, // Send the content from the editor
+                content: data.content, // Content from Quill editor
                 excerpt: data.excerpt,
-                imageUrl: data.imageUrl, // Handle image upload separately if needed
+                imageUrl: finalImageUrl,
                 tags: tagsArray,
-                requestingUserId: currentUser.id, // Include user ID for API authorization
+                requestingUserId: currentUser.id,
             };
-
-            // TODO: Implement image upload logic if selectedImage exists
-            if (selectedImage) {
-                 console.warn("Image file selected, but upload functionality is not implemented. Using URL field if provided.");
-                 // In a real app:
-                 // const uploadedImageUrl = await uploadImage(selectedImage);
-                 // updatePayload.imageUrl = uploadedImageUrl;
-            }
 
             console.log(`[Edit Page] Sending update payload for slug ${slug}:`, updatePayload);
 
@@ -234,7 +238,7 @@ export default function EditPostPage() {
                 title: 'Post Updated!',
                 description: `The post "${result.post.title}" has been saved.`,
             });
-            // Redirect back to the updated post page (using the potentially new slug from response)
+            // Redirect back to the updated post page (using potentially new slug)
             router.push(`/blogs/${result.post.slug}`);
 
         } catch (error) {
@@ -244,20 +248,30 @@ export default function EditPostPage() {
                 description: error instanceof Error ? error.message : 'An unknown error occurred.',
                 variant: 'destructive',
             });
-            setIsSubmitting(false); // Only set submitting false on error
+            setIsSubmitting(false);
         }
-        // Don't set isSubmitting to false on success because we redirect
     };
 
     // Function to handle image file selection
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            setSelectedImage(file);
-            setValue('imageUrl', '', { shouldValidate: true });
-            toast({title: "Image Selected", description: "Image upload not implemented. URL field cleared. Provide a URL instead."});
+             // Optional: Add size/type validation here
+             const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+             if (file.size > MAX_FILE_SIZE) {
+                  toast({ title: "File Too Large", description: "Image must be less than 5MB.", variant: "destructive" });
+                  e.target.value = ''; // Reset file input
+                  return;
+             }
+              if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+                 toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, GIF, or WEBP image.", variant: "destructive" });
+                 e.target.value = ''; // Reset file input
+                 return;
+             }
+            setSelectedImageFile(file);
+            toast({title: "Image Selected", description: "Image upload function is currently a placeholder."})
         } else {
-            setSelectedImage(null);
+            setSelectedImageFile(null);
         }
     };
 
@@ -265,13 +279,12 @@ export default function EditPostPage() {
     if (isLoadingData || authLoading) {
         return (
             <div className="container mx-auto py-12">
-                <Card className="max-w-4xl mx-auto"> {/* Increased max-width */}
+                <Card className="max-w-4xl mx-auto">
                     <CardHeader>
                         <Skeleton className="h-8 w-1/2 mb-2" />
                         <Skeleton className="h-4 w-3/4" />
                     </CardHeader>
                     <CardContent className="space-y-6">
-                         {/* Match skeleton structure to form fields */}
                          <Skeleton className="h-10 w-full" /> {/* Title */}
                          <Skeleton className="h-10 w-full" /> {/* Category */}
                          <Skeleton className="h-64 w-full" /> {/* Content (Editor) */}
@@ -288,9 +301,7 @@ export default function EditPostPage() {
         );
     }
 
-    // Render message or redirect if not authorized
     if (!isAuthorized) {
-        // The redirect should handle this, but keep a fallback message
         return (
             <div className="container mx-auto py-12 text-center">
                 <p className="text-destructive">You are not authorized to edit this post.</p>
@@ -301,26 +312,25 @@ export default function EditPostPage() {
     // Main component render: Edit form
     return (
         <div className="container mx-auto py-12">
-            <Card className="max-w-4xl mx-auto shadow-lg"> {/* Increased max-width */}
+            <Card className="max-w-4xl mx-auto shadow-lg">
                 <CardHeader>
                     <CardTitle className="text-2xl">Edit Blog Post</CardTitle>
                     <CardDescription>Update the details for your post below.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        {/* Title Input */}
                         <div>
                             <Label htmlFor="title">Title</Label>
                             <Input id="title" {...register('title')} disabled={isSubmitting} placeholder="Enter a catchy title" />
                             {errors.title && <p className="text-xs text-destructive mt-1">{errors.title.message}</p>}
                         </div>
 
-                        {/* Category Select */}
                         <div>
                             <Label htmlFor="category">Category</Label>
                             <Select
-                                // Set default value using defaultValue prop on Select
-                                defaultValue={postData?.category}
+                                // Use value prop bound to RHF control for dynamic updates
+                                // Use Controller if Select doesn't directly support `value` prop update
+                                value={watch('category')} // Watch the value for the Select trigger display
                                 onValueChange={(value) => setValue('category', value as PostFormInputs['category'], { shouldValidate: true })}
                                 disabled={isSubmitting}
                             >
@@ -336,18 +346,19 @@ export default function EditPostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                         {/* Content Rich Text Editor */}
+                         {/* Quill Rich Text Editor */}
                          <div className="space-y-1">
                            <Label htmlFor="content">Content</Label>
                            <Controller
                              name="content"
                              control={control}
                              render={({ field }) => (
-                               <RichTextEditor
+                               <QuillEditor // Use QuillEditor
                                  value={field.value}
-                                 onChange={field.onChange}
+                                 onChange={field.onChange} // Pass onChange directly
                                  placeholder="Edit your blog post content here..."
-                                 disabled={isSubmitting}
+                                 readOnly={isSubmitting} // Use readOnly for Quill
+                                 className="bg-background" // Ensure background matches
                                />
                              )}
                            />
@@ -355,7 +366,6 @@ export default function EditPostPage() {
                          </div>
 
 
-                        {/* Excerpt */}
                         <div>
                             <Label htmlFor="excerpt">Excerpt (Optional)</Label>
                              <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="Short summary (10-200 characters). If empty, one will be generated." disabled={isSubmitting} />
@@ -366,44 +376,45 @@ export default function EditPostPage() {
                          <div>
                              <Label>Featured Image</Label>
                              <div className="flex flex-col sm:flex-row gap-4 items-start">
-                                 {/* Image URL Input */}
                                 <div className="flex-grow space-y-2">
                                     <Label htmlFor="imageUrl" className="text-sm font-normal">Image URL</Label>
                                     <Input
                                         id="imageUrl"
                                         {...register('imageUrl')}
-                                        placeholder="Paste an image URL (e.g., from Unsplash)"
-                                        disabled={isSubmitting || !!selectedImage}
+                                        placeholder="Paste an image URL"
+                                        disabled={isSubmitting || !!selectedImageFile}
                                     />
                                      {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
                                 </div>
                                 <div className="text-center text-sm text-muted-foreground sm:pt-8">OR</div>
-                                {/* Image Upload Option */}
                                 <div className="flex-grow space-y-2">
-                                     <Label htmlFor="imageFile" className="text-sm font-normal">Upload Image (Optional)</Label>
+                                     <Label htmlFor="imageFile" className="text-sm font-normal">Upload Image</Label>
                                      <Input
                                          id="imageFile"
                                          type="file"
-                                         accept="image/*"
+                                         accept="image/jpeg,image/png,image/gif,image/webp"
                                          disabled={isSubmitting}
-                                         onChange={handleImageChange}
-                                         className="cursor-pointer"
+                                         onChange={handleImageFileChange}
+                                         className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                                      />
-                                      <p className="text-xs text-muted-foreground">Upload & Crop functionality is not yet implemented. Use the URL field above.</p>
-                                      {/* TODO: Add Crop Button/Functionality */}
-                                      {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image (Not Implemented)</Button> */}
+                                      <p className="text-xs text-muted-foreground">Max 5MB. JPG, PNG, GIF, WEBP.</p>
+                                      {/* TODO: Add Crop Button/Functionality if needed */}
                                 </div>
                              </div>
                              {/* Image Preview */}
                               <div className="mt-4">
                                  <p className="text-sm font-medium mb-2">Image Preview:</p>
                                   {imagePreviewUrl ? (
-                                      <img
-                                          src={imagePreviewUrl}
-                                          alt="Image preview"
-                                          className="max-h-40 w-auto rounded-md shadow-sm object-contain border"
-                                          onError={() => setImagePreviewUrl(postData?.imageUrl || null)} // Revert to original on error
-                                      />
+                                      <div className="relative h-40 w-full max-w-xs rounded-md overflow-hidden border">
+                                          <Image
+                                              src={imagePreviewUrl}
+                                              alt="Image preview"
+                                              fill
+                                              sizes="(max-width: 640px) 100vw, 320px"
+                                              className="object-contain"
+                                              onError={() => setImagePreviewUrl(postData?.imageUrl || null)} // Revert on error
+                                          />
+                                      </div>
                                   ) : (
                                       <div className="h-40 w-full max-w-xs rounded-md bg-muted flex items-center justify-center text-muted-foreground">
                                           No Image Preview
@@ -412,8 +423,6 @@ export default function EditPostPage() {
                               </div>
                          </div>
 
-
-                        {/* Tags Input */}
                         <div>
                             <Label htmlFor="tags">Tags (Optional)</Label>
                             <Input id="tags" {...register('tags')} placeholder="Comma-separated tags, e.g., tech, tips" disabled={isSubmitting} />
