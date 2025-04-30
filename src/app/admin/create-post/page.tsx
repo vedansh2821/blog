@@ -2,28 +2,29 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useForm, Controller, type SubmitHandler, useWatch } from 'react-hook-form'; // Added useWatch
+import { useForm, Controller, type SubmitHandler, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea'; // Keep for excerpt
-import RichTextEditor from '@/components/rich-text-editor/RichTextEditor'; // Import the new editor
+// Import the new Quill editor
+import QuillEditor from '@/components/rich-text-editor/QuillEditor';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
-import { Loader2, PlusCircle, Eye } from 'lucide-react'; // Added Eye icon
+import { Loader2, PlusCircle, Eye } from 'lucide-react';
 import { useAuth } from '@/lib/auth/authContext';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils'; // Import cn
-import { Separator } from '@/components/ui/separator'; // Import Separator
+import { cn } from '@/lib/utils';
+import { Separator } from '@/components/ui/separator';
+import Image from 'next/image'; // Use Next Image for preview
 
-// Ensure categories match those used in mock-sql or fetched dynamically
 const categories = ['Technology', 'Lifestyle', 'Health', 'Travel', 'Love', 'Others'];
 
-// Updated schema: Use RichTextEditor for 'content'
+// Updated schema: Use QuillEditor for 'content'
 const postFormSchema = z.object({
     title: z.string().min(5, { message: 'Title must be at least 5 characters.' }),
     category: z.enum(categories as [string, ...string[]], {
@@ -48,10 +49,10 @@ export default function CreatePostPage() {
     const router = useRouter();
     const { currentUser, loading: authLoading } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<File | null>(null);
+    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null); // Store the File object
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); // State for image preview URL
 
-    const { register, handleSubmit, formState: { errors }, control, setValue, trigger, watch } = useForm<PostFormInputs>({ // Added watch
+    const { register, handleSubmit, formState: { errors }, control, setValue, trigger, watch } = useForm<PostFormInputs>({
         resolver: zodResolver(postFormSchema),
         defaultValues: {
             title: '',
@@ -63,14 +64,12 @@ export default function CreatePostPage() {
         },
     });
 
-    // Watch form values for the preview
     const watchedContent = watch('content');
     const watchedTitle = watch('title');
-    const watchedImageUrl = watch('imageUrl');
-    const watchedCategory = watch('category'); // Watch category
-    const watchedExcerpt = watch('excerpt'); // Watch excerpt
+    const watchedImageUrl = watch('imageUrl'); // Keep watching URL input
+    const watchedCategory = watch('category');
+    const watchedExcerpt = watch('excerpt');
 
-    // Effect for redirecting unauthorized users
     React.useEffect(() => {
         if (!authLoading && !currentUser) {
             toast({ title: "Unauthorized", description: "You must be logged in to create a post.", variant: "destructive" });
@@ -81,13 +80,13 @@ export default function CreatePostPage() {
     // Effect to update image preview when file or URL changes
     useEffect(() => {
         let objectUrl: string | null = null;
-        if (selectedImage) {
-            objectUrl = URL.createObjectURL(selectedImage);
+        if (selectedImageFile) {
+            objectUrl = URL.createObjectURL(selectedImageFile);
             setImagePreviewUrl(objectUrl);
+            setValue('imageUrl', ''); // Clear URL if file is selected
         } else if (watchedImageUrl) {
-             // Very basic URL validation for preview
              try {
-                new URL(watchedImageUrl);
+                new URL(watchedImageUrl); // Basic validation
                 setImagePreviewUrl(watchedImageUrl);
              } catch (_) {
                  setImagePreviewUrl(null); // Invalid URL
@@ -95,15 +94,14 @@ export default function CreatePostPage() {
         } else {
             setImagePreviewUrl(null); // No image selected or URL provided
         }
-         // Clean up the object URL when the component unmounts or the image changes
         return () => {
              if (objectUrl) {
                 URL.revokeObjectURL(objectUrl);
              }
         };
-    }, [selectedImage, watchedImageUrl]);
+    }, [selectedImageFile, watchedImageUrl, setValue]);
 
-    // Function to handle form submission
+
     const onSubmit: SubmitHandler<PostFormInputs> = async (data) => {
         if (!currentUser) {
             toast({ title: "Authentication Error", description: "Cannot create post. User not found.", variant: "destructive" });
@@ -111,28 +109,45 @@ export default function CreatePostPage() {
         }
 
         setIsSubmitting(true);
+        let finalImageUrl = data.imageUrl; // Start with the URL field value
+
         try {
-            // Process tags from string input to array
+            // **Image Upload Logic (Placeholder)**
+            if (selectedImageFile) {
+                 console.warn("Image file selected, but upload functionality is not implemented. Using placeholder image URL.");
+                 // In a real app:
+                 // 1. Create a FormData object
+                 // const formData = new FormData();
+                 // formData.append('file', selectedImageFile);
+                 // formData.append('upload_preset', 'your_cloudinary_preset'); // Example for Cloudinary
+                 //
+                 // 2. Send to your image upload endpoint or service (e.g., Cloudinary, S3)
+                 // const uploadResponse = await fetch('YOUR_UPLOAD_ENDPOINT', {
+                 //    method: 'POST',
+                 //    body: formData,
+                 // });
+                 // const uploadResult = await uploadResponse.json();
+                 // if (!uploadResponse.ok) throw new Error(uploadResult.error?.message || 'Image upload failed');
+                 // finalImageUrl = uploadResult.secure_url; // Get the URL from the upload service
+                 // console.log("Uploaded Image URL:", finalImageUrl);
+
+                 // Using placeholder for now since upload isn't implemented
+                 finalImageUrl = `https://picsum.photos/seed/${Date.now()}/1200/600`;
+                 toast({title: "Image Upload Skipped", description: "Using a placeholder image URL as upload is not implemented."});
+            }
+
+
             const tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
-            // Construct the payload for the API - send 'content' directly
             const postData = {
                 title: data.title,
                 category: data.category,
-                content: data.content, // Send the content from the editor
+                content: data.content, // Content from Quill editor
                 excerpt: data.excerpt,
-                imageUrl: data.imageUrl, // Image URL takes precedence if file not handled
+                imageUrl: finalImageUrl, // Use the final URL (either from input or upload)
                 tags: tagsArray,
-                requestingUserId: currentUser.id, // Include the user ID for the API auth
+                requestingUserId: currentUser.id,
             };
-
-            // TODO: Implement image upload logic if selectedImage exists
-            if (selectedImage) {
-                 console.warn("Image file selected, but upload functionality is not implemented. Using URL field if provided.");
-                 // In a real app:
-                 // const uploadedImageUrl = await uploadImage(selectedImage); // Your upload function
-                 // postData.imageUrl = uploadedImageUrl;
-            }
 
 
             console.log("[Create Post] Sending data to API:", postData);
@@ -149,7 +164,6 @@ export default function CreatePostPage() {
             if (!response.ok) {
                 const errorMsg = result.error || 'Failed to create post';
                 console.error(`[Create Post] API Error: ${response.status} - ${errorMsg}`);
-                 // Log request payload on error for debugging
                 console.error("[Create Post] Failed Request Payload:", postData);
                 throw new Error(errorMsg);
             }
@@ -158,7 +172,6 @@ export default function CreatePostPage() {
                 title: 'Post Created!',
                 description: `Your post "${result.title}" has been published.`,
             });
-            // Redirect to the newly created post page
             router.push(`/blogs/${result.slug}`);
 
         } catch (error) {
@@ -168,21 +181,32 @@ export default function CreatePostPage() {
                 description: error instanceof Error ? error.message : 'An unknown error occurred.',
                 variant: 'destructive',
             });
-            setIsSubmitting(false); // Only set submitting false on error
+            setIsSubmitting(false);
         }
-        // Don't set isSubmitting to false on success because we redirect
     };
 
-    // Function to handle image file selection
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+
+    const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            setSelectedImage(file);
-            // Clear the imageUrl input if a file is selected, as file takes precedence (once upload is implemented)
-            setValue('imageUrl', '', { shouldValidate: true });
-            toast({title: "Image Selected", description: "Image upload not implemented. URL field cleared. Provide a URL instead for now."})
+            // Optional: Add size/type validation here
+             const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+             if (file.size > MAX_FILE_SIZE) {
+                  toast({ title: "File Too Large", description: "Image must be less than 5MB.", variant: "destructive" });
+                  e.target.value = ''; // Reset file input
+                  return;
+             }
+             if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+                 toast({ title: "Invalid File Type", description: "Please select a JPG, PNG, GIF, or WEBP image.", variant: "destructive" });
+                 e.target.value = ''; // Reset file input
+                 return;
+             }
+
+            setSelectedImageFile(file);
+            // Don't need to clear URL here, effect handles precedence
+             toast({title: "Image Selected", description: "Image upload function is currently a placeholder."})
         } else {
-            setSelectedImage(null);
+            setSelectedImageFile(null);
         }
     };
 
@@ -190,7 +214,7 @@ export default function CreatePostPage() {
     if (authLoading || currentUser === undefined) {
         return (
             <div className="container mx-auto py-12">
-                <Card className="max-w-4xl mx-auto"> {/* Increased max-width */}
+                <Card className="max-w-4xl mx-auto">
                     <CardHeader>
                         <Skeleton className="h-8 w-1/2 mb-2" />
                         <Skeleton className="h-4 w-3/4" />
@@ -211,24 +235,21 @@ export default function CreatePostPage() {
         );
     }
 
-    // Main component render
     return (
         <div className="container mx-auto py-12">
-            <Card className="max-w-4xl mx-auto shadow-lg"> {/* Increased max-width */}
+            <Card className="max-w-4xl mx-auto shadow-lg">
                 <CardHeader>
                     <CardTitle className="text-2xl">Create New Blog Post</CardTitle>
                     <CardDescription>Fill in the details below to publish a new post.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                        {/* Title Input */}
                         <div>
                             <Label htmlFor="title">Title</Label>
                             <Input id="title" {...register('title')} disabled={isSubmitting} placeholder="Enter a catchy title" />
                             {errors.title && <p className="text-xs text-destructive mt-1">{errors.title.message}</p>}
                         </div>
 
-                        {/* Category Select */}
                         <div>
                             <Label htmlFor="category">Category</Label>
                             <Select
@@ -247,29 +268,25 @@ export default function CreatePostPage() {
                             {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
                         </div>
 
-                        {/* Content Rich Text Editor */}
+                        {/* Quill Rich Text Editor */}
                         <div className="space-y-1">
                            <Label htmlFor="content">Content</Label>
                            <Controller
                              name="content"
                              control={control}
                              render={({ field }) => (
-                               <RichTextEditor
+                               <QuillEditor // Use QuillEditor
                                  value={field.value}
-                                 onChange={(value) => {
-                                     field.onChange(value);
-                                     // Optionally trigger validation on change
-                                     // trigger('content');
-                                 }}
+                                 onChange={field.onChange} // Pass onChange directly
                                  placeholder="Write your blog post here..."
-                                 disabled={isSubmitting}
+                                 readOnly={isSubmitting} // Use readOnly for Quill
+                                 className="bg-background" // Ensure background matches
                                />
                              )}
                            />
                             {errors.content && <p className="text-xs text-destructive mt-1">{errors.content.message}</p>}
                          </div>
 
-                        {/* Excerpt */}
                         <div>
                             <Label htmlFor="excerpt">Excerpt (Optional)</Label>
                             <Textarea id="excerpt" rows={3} {...register('excerpt')} placeholder="A short summary shown in post listings (10-200 characters). If left empty, one will be generated." disabled={isSubmitting} />
@@ -285,86 +302,92 @@ export default function CreatePostPage() {
                                     <Input
                                         id="imageUrl"
                                         {...register('imageUrl')}
-                                        placeholder="Paste an image URL (e.g., from Unsplash)"
-                                        disabled={isSubmitting || !!selectedImage} // Disable if file selected
+                                        placeholder="Paste an image URL"
+                                        disabled={isSubmitting || !!selectedImageFile} // Disable if file selected
                                     />
                                      {errors.imageUrl && <p className="text-xs text-destructive mt-1">{errors.imageUrl.message}</p>}
                                 </div>
                                 <div className="text-center text-sm text-muted-foreground sm:pt-8">OR</div>
                                 <div className="flex-grow space-y-2">
-                                     <Label htmlFor="imageFile" className="text-sm font-normal">Upload Image (Optional)</Label>
+                                     <Label htmlFor="imageFile" className="text-sm font-normal">Upload Image</Label>
                                      <Input
                                          id="imageFile"
                                          type="file"
-                                         accept="image/*"
+                                         accept="image/jpeg,image/png,image/gif,image/webp"
                                          disabled={isSubmitting}
-                                         onChange={handleImageChange}
-                                         className="cursor-pointer"
+                                         onChange={handleImageFileChange}
+                                         className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                                      />
-                                      <p className="text-xs text-muted-foreground">Upload & Crop is currently not implemented. Please use the URL field.</p>
-                                       {/* TODO: Add Crop Button/Functionality */}
-                                       {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImage || isSubmitting}>Crop Image</Button> */}
+                                     <p className="text-xs text-muted-foreground">Max 5MB. JPG, PNG, GIF, WEBP.</p>
+                                     {/* TODO: Add Crop Button/Functionality if needed */}
+                                     {/* <Button type="button" variant="outline" size="sm" disabled={!selectedImageFile || isSubmitting}>Crop Image (Not Implemented)</Button> */}
                                 </div>
                              </div>
-                             {/* Image Preview (using state variable) */}
+                             {/* Image Preview */}
                               <div className="mt-4">
                                  <p className="text-sm font-medium mb-2">Image Preview:</p>
                                  {imagePreviewUrl ? (
-                                     <img
-                                         src={imagePreviewUrl}
-                                         alt="Selected preview"
-                                         className="max-h-40 w-auto rounded-md shadow-sm object-contain border"
-                                         onError={() => setImagePreviewUrl(null)} // Clear preview if URL is broken
-                                     />
+                                     <div className="relative h-40 w-full max-w-xs rounded-md overflow-hidden border">
+                                         <Image
+                                             src={imagePreviewUrl}
+                                             alt="Selected preview"
+                                             fill
+                                             sizes="(max-width: 640px) 100vw, 320px" // Adjust sizes as needed
+                                             className="object-contain" // Use contain to show full image
+                                             onError={() => setImagePreviewUrl(null)}
+                                         />
+                                     </div>
                                   ) : (
                                       <div className="h-40 w-full max-w-xs rounded-md bg-muted flex items-center justify-center text-muted-foreground">
-                                          No Image Preview
+                                          No Image Selected
                                       </div>
                                   )}
                              </div>
                          </div>
 
-                        {/* Tags Input */}
                         <div>
                             <Label htmlFor="tags">Tags (Optional)</Label>
-                            <Input id="tags" {...register('tags')} placeholder="Comma-separated tags, e.g., tech, lifestyle, coding" disabled={isSubmitting} />
+                            <Input id="tags" {...register('tags')} placeholder="Comma-separated tags, e.g., tech, lifestyle" disabled={isSubmitting} />
                             <p className="text-xs text-muted-foreground mt-1">Helps users find your post.</p>
                             {errors.tags && <p className="text-xs text-destructive mt-1">{errors.tags.message}</p>}
                         </div>
 
                         <Separator className="my-8" />
 
-                        {/* Live Preview Section */}
+                        {/* Live Post Card Preview */}
                          <div>
                             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                                <Eye className="h-5 w-5 text-muted-foreground" /> Live Post Card Preview
+                                <Eye className="h-5 w-5 text-muted-foreground" /> Post Card Preview
                             </h3>
-                             <Card className="bg-muted/30 p-4 w-full max-w-sm"> {/* Mimic BlogPostCard structure */}
+                             <Card className="bg-muted/30 p-0 w-full max-w-sm overflow-hidden"> {/* Adjust padding */}
                                 <CardContent className="p-0">
                                     {/* Preview Image */}
-                                     {imagePreviewUrl ? (
-                                        <div className="relative h-48 w-full overflow-hidden rounded-t-lg mb-4">
-                                             <img
+                                     <div className="relative h-48 w-full bg-muted flex items-center justify-center text-muted-foreground">
+                                        {imagePreviewUrl ? (
+                                             <Image
                                                 src={imagePreviewUrl}
                                                 alt="Preview"
-                                                className="absolute inset-0 w-full h-full object-cover"
-                                                onError={(e) => e.currentTarget.style.display='none'} // Hide if broken
+                                                fill
+                                                sizes="384px" // Match max-w-sm
+                                                className="object-cover"
+                                                onError={(e) => e.currentTarget.style.display='none'}
                                             />
-                                             {watchedCategory && <span className="absolute top-2 right-2 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-semibold">{watchedCategory}</span>}
-                                        </div>
-                                     ) : (
-                                          <div className="h-48 w-full bg-muted rounded-t-lg flex items-center justify-center text-muted-foreground mb-4">Image Preview</div>
-                                     )}
+                                         ) : (
+                                             <span>Image Preview</span>
+                                         )}
+                                         {watchedCategory && <span className="absolute top-2 right-2 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-semibold z-10">{watchedCategory}</span>}
+                                     </div>
 
                                      {/* Preview Title */}
-                                     <h4 className="text-lg font-semibold mb-1 px-4 leading-tight line-clamp-2">
-                                        {watchedTitle || <span className="text-muted-foreground">Title preview...</span>}
-                                     </h4>
-
-                                     {/* Preview Excerpt */}
-                                     <p className="text-sm text-muted-foreground mb-3 px-4 line-clamp-3">
-                                         {watchedExcerpt || <span className="italic">Excerpt preview...</span>}
-                                     </p>
+                                     <div className="p-4 pb-2">
+                                         <h4 className="text-lg font-semibold mb-1 leading-tight line-clamp-2">
+                                            {watchedTitle || <span className="text-muted-foreground">Title preview...</span>}
+                                         </h4>
+                                         {/* Preview Excerpt */}
+                                         <p className="text-sm text-muted-foreground line-clamp-3">
+                                             {watchedExcerpt || <span className="italic">Excerpt preview...</span>}
+                                         </p>
+                                     </div>
 
                                      {/* Basic Meta Preview */}
                                       <div className="flex items-center gap-2 text-xs text-muted-foreground px-4 pb-4 border-t pt-3 mt-3">
@@ -377,9 +400,10 @@ export default function CreatePostPage() {
                              </Card>
                          </div>
 
-
                         {/* Submit Button */}
                         <div className="flex justify-end pt-4 border-t mt-8">
+                            {/* TODO: Add Save Draft button later */}
+                            {/* <Button type="button" variant="outline" className="mr-2" disabled={isSubmitting}>Save Draft</Button> */}
                             <Button type="submit" disabled={isSubmitting} size="lg">
                                 {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                                 {isSubmitting ? 'Publishing...' : 'Publish Post'}

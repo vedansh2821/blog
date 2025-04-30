@@ -3,6 +3,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import Quill's snow theme */
+@import 'quill/dist/quill.snow.css';
+
 body {
   font-family: var(--font-geist-sans), sans-serif;
 }
@@ -34,6 +37,8 @@ body {
     --chart-4: 30 74% 66%;
     --chart-5: 330 87% 67%;
     --radius: 0.5rem;
+    --sidebar-width: 16rem; /* Width when expanded */
+    --sidebar-width-icon: 3rem; /* Width when collapsed */
     --sidebar-background: 210 40% 98%;
     --sidebar-foreground: 222.2 84% 4.9%;
     --sidebar-primary: 163 100% 70%;
@@ -116,10 +121,47 @@ body {
   }
 }
 
-/* Placeholder for Rich Text Editor */
-[contenteditable][data-placeholder]:empty::before {
-  content: attr(data-placeholder);
-  color: hsl(var(--muted-foreground));
-  pointer-events: none;
-  display: block; /* or inline-block */
+/* Quill Editor Styling Overrides */
+.ql-editor {
+  min-height: 250px; /* Ensure editor has a minimum height */
+  @apply prose dark:prose-invert max-w-none text-base leading-relaxed; /* Apply prose styles */
+  font-family: var(--font-geist-sans), sans-serif; /* Match body font */
+}
+
+.ql-toolbar.ql-snow {
+  @apply rounded-t-md border-border bg-card;
+}
+.ql-container.ql-snow {
+  @apply rounded-b-md border-border;
+}
+
+/* Dark mode adjustments for Quill toolbar */
+.dark .ql-snow .ql-stroke {
+  @apply stroke-foreground/80;
+}
+.dark .ql-snow .ql-fill {
+  @apply fill-foreground/80;
+}
+.dark .ql-snow .ql-picker {
+  @apply text-foreground/80;
+}
+.dark .ql-snow .ql-picker-label::before {
+    @apply text-foreground/80;
+}
+.dark .ql-snow .ql-picker-options {
+    @apply bg-popover border-border text-popover-foreground;
+}
+.dark .ql-snow .ql-picker-item:hover {
+    @apply text-primary;
+}
+.dark .ql-snow .ql-picker-item.ql-selected {
+    @apply text-primary;
+}
+
+/* Make placeholder visible */
+.ql-editor.ql-blank::before {
+    @apply text-muted-foreground not-italic;
+    content: attr(data-placeholder);
+    position: absolute;
+    pointer-events: none;
 }
